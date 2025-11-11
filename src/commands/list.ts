@@ -95,8 +95,22 @@ export async function listCommand(options: ListOptions = {}): Promise<void> {
         highlightCurrent: true,
       });
 
-      for (const line of lines) {
-        console.log(line);
+      if (lines.length === 0) {
+        // No stacks found, fall back to worktree list
+        clack.log.warn('No stacks found. Showing worktrees:');
+        console.log('');
+        const listLines = visualizer.visualizeWorktreeList(
+          worktrees,
+          stacks,
+          currentPath
+        );
+        for (const line of listLines) {
+          console.log(line);
+        }
+      } else {
+        for (const line of lines) {
+          console.log(line);
+        }
       }
     } else {
       // List view showing worktrees grouped by stack

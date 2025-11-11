@@ -11,6 +11,7 @@ export interface StackNode {
   worktree: Worktree | null;
   color: string;
   depth: number;
+  commit?: string; // Commit hash this branch points to
 }
 
 export interface Stack {
