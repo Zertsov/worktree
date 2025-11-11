@@ -73,6 +73,7 @@ async function handleListCommand(args: string[]): Promise<void> {
     verbose: false,
     tree: false,
     simple: false,
+    noStack: false,
   };
 
   for (const arg of args) {
@@ -88,6 +89,9 @@ async function handleListCommand(args: string[]): Promise<void> {
       case '-s':
       case '--simple':
         options.simple = true;
+        break;
+      case '--no-stack':
+        options.noStack = true;
         break;
       case '-h':
       case '--help':
@@ -263,12 +267,14 @@ ${pc.bold('Options:')}
   -t, --tree           Show tree view with branch relationships
   -v, --verbose        Show detailed information
   -s, --simple         Show simple git output
+  --no-stack           List worktrees without stack detection (faster)
   -h, --help           Show help
 
 ${pc.bold('Examples:')}
   worktree list                    # List all worktrees
   worktree list --tree             # Show tree view
   worktree list --tree --verbose   # Tree view with details
+  worktree list --no-stack         # Fast listing without stack detection
 `);
 }
 

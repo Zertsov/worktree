@@ -12,6 +12,7 @@ export interface ListOptions {
   verbose?: boolean;
   tree?: boolean;
   simple?: boolean;
+  noStack?: boolean;
 }
 
 export async function listCommand(options: ListOptions = {}): Promise<void> {
@@ -23,6 +24,41 @@ export async function listCommand(options: ListOptions = {}): Promise<void> {
     if (!isRepo) {
       clack.cancel('Not a git repository');
       process.exit(1);
+    }
+
+    // Simple mode: just list worktrees without formatting
+    if (options.simple) {
+      spinner.start('Loading worktrees...');
+      const output = await GitOperations.listWorktrees();
+      spinner.stop('Loaded');
+      console.log(output);
+      return;
+    }
+
+    // No-stack mode: list worktrees without stack detection
+    if (options.noStack) {
+      spinner.start('Loading worktrees...');
+      const repo = await GitOperations.getRepository();
+      const detector = new StackDetector(repo.root);
+      const worktrees = await detector.getAllWorktrees();
+      const currentPath = process.cwd();
+      spinner.stop('Loaded');
+
+      console.log(''); // Empty line for spacing
+
+      if (worktrees.length === 0) {
+        console.log('No worktrees found.');
+      } else {
+        for (const wt of worktrees) {
+          const isCurrent = wt.path === currentPath;
+          const marker = isCurrent ? '→' : ' ';
+          const branch = wt.branch || '(detached)';
+          console.log(`${marker} ${branch.padEnd(30)} ${wt.path}`);
+        }
+      }
+
+      console.log(''); // Empty line for spacing
+      return;
     }
 
     spinner.start('Loading worktrees and branches...');
@@ -39,13 +75,6 @@ export async function listCommand(options: ListOptions = {}): Promise<void> {
     const currentPath = process.cwd();
 
     spinner.stop('Loaded');
-
-    // Simple mode: just list worktrees
-    if (options.simple) {
-      const output = await GitOperations.listWorktrees();
-      console.log(output);
-      return;
-    }
 
     // Detect stacks
     const stacks = await detector.detectStacks(branches, worktrees);
