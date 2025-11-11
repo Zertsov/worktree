@@ -9,6 +9,7 @@ import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
 import { pruneCommand } from './commands/prune.js';
 import { stackCommand } from './commands/stack.js';
+import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
   help?: boolean;
@@ -54,6 +55,10 @@ export async function runCLI(args: string[]): Promise<void> {
 
       case 'stack':
         await handleStackCommand(rest);
+        break;
+
+      case 'pr':
+        await handlePRCommand(rest);
         break;
 
       default:
@@ -223,6 +228,38 @@ async function handleStackCommand(args: string[]): Promise<void> {
   await stackCommand(options);
 }
 
+async function handlePRCommand(args: string[]): Promise<void> {
+  const options: { yes?: boolean; title?: string; description?: string } = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    switch (arg) {
+      case '-y':
+      case '--yes':
+        options.yes = true;
+        break;
+      case '-t':
+      case '--title':
+        options.title = args[++i];
+        break;
+      case '-d':
+      case '--description':
+        options.description = args[++i];
+        break;
+      case '-h':
+      case '--help':
+        showPRHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await prCommand(options);
+}
+
 function showVersion(): void {
   console.log('worktree v0.1.0');
 }
@@ -240,6 +277,7 @@ ${pc.bold('Commands:')}
   ${pc.cyan('remove, rm')}         Remove a worktree
   ${pc.cyan('prune')}              Clean up stale worktree references
   ${pc.cyan('stack')}              Display full stack visualization
+  ${pc.cyan('pr')}                 Create GitHub PRs for stack branches
 
 ${pc.bold('Options:')}
   -h, --help           Show help
@@ -251,6 +289,8 @@ ${pc.bold('Examples:')}
   worktree add -b main feat/new     # Create new branch from main
   worktree remove feature/login     # Remove worktree by branch name
   worktree stack                    # Show all branch relationships
+  worktree pr                       # Create PRs interactively
+  worktree pr -y                    # Create PRs for all descendants
 
 ${pc.dim('Run')} ${pc.cyan('worktree <command> --help')} ${pc.dim('for more information on a command.')}
 `);
@@ -354,6 +394,42 @@ ${pc.bold('Options:')}
 ${pc.bold('Examples:')}
   worktree stack                   # Show all stacks
   worktree stack --verbose         # Show with paths
+`);
+}
+
+function showPRHelp(): void {
+  console.log(`
+${pc.bold('worktree pr')} - Create GitHub PRs for stack branches
+
+${pc.bold('Usage:')}
+  worktree pr [options]
+
+${pc.bold('Options:')}
+  -y, --yes                    Headless mode (no prompts)
+  -t, --title <template>       PR title template (use {branch} as placeholder)
+  -d, --description <text>     PR description
+  -h, --help                   Show help
+
+${pc.bold('Behavior:')}
+  Interactive mode (default):
+    - Select which branches to create PRs for
+    - Customize title and description for each PR
+    - Confirm before creating each PR
+
+  Headless mode (--yes):
+    - Automatically creates PRs for current branch and all descendants
+    - Uses auto-generated titles from branch names
+    - Skips branches that already have PRs or aren't pushed
+
+${pc.bold('Authentication:')}
+  Uses GitHub CLI (gh) if available, otherwise prompts for token.
+  You can also set GITHUB_TOKEN or GH_TOKEN environment variable.
+
+${pc.bold('Examples:')}
+  worktree pr                                  # Interactive mode
+  worktree pr -y                               # Create PRs for all descendants
+  worktree pr -y -t "feat: {branch}"           # Custom title template
+  worktree pr -y -d "Auto-generated PR"        # Custom description
 `);
 }
 
