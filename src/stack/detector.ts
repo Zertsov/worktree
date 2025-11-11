@@ -31,7 +31,7 @@ export class StackDetector {
     worktrees: Worktree[]
   ): Promise<Map<string, Stack>> {
     const relationships = await this.buildRelationships(branches);
-    const stacks = this.groupIntoStacks(relationships, worktrees);
+    const stacks = await this.groupIntoStacks(relationships, worktrees);
     return stacks;
   }
 
@@ -79,7 +79,37 @@ export class StackDetector {
       }
     }
 
-    // Third pass: build children lists
+    // Third pass: detect and break circular dependencies
+    // If A→B and B→A, keep the relationship where the parent is more "root-like"
+    for (const [branchName, rel] of relationships.entries()) {
+      if (rel.parent) {
+        const parentRel = relationships.get(rel.parent);
+        if (parentRel?.parent === branchName) {
+          // Circular dependency detected: branchName→parent and parent→branchName
+          // Break the cycle by preferring common base branches as parents
+          const commonBases = ['main', 'master', 'develop', 'dev'];
+          const branchIsCommonBase = commonBases.includes(branchName);
+          const parentIsCommonBase = commonBases.includes(rel.parent);
+
+          if (parentIsCommonBase && !branchIsCommonBase) {
+            // Keep parent as the parent, remove branchName as parent of parent
+            parentRel.parent = null;
+          } else if (branchIsCommonBase && !parentIsCommonBase) {
+            // Keep branchName as root, remove its parent
+            rel.parent = null;
+          } else {
+            // Both or neither are common bases - use alphabetical order
+            if (branchName < rel.parent) {
+              parentRel.parent = null;
+            } else {
+              rel.parent = null;
+            }
+          }
+        }
+      }
+    }
+
+    // Fourth pass: build children lists
     for (const [branchName, rel] of relationships.entries()) {
       if (rel.parent) {
         const parentRel = relationships.get(rel.parent);
@@ -201,12 +231,18 @@ export class StackDetector {
         // Calculate distance from merge-base to current branch
         const distanceFromBase = await this.getCommitDistanceCached(mergeBase, branch);
 
-        // Skip if current branch is not ahead of the merge-base
-        if (!distanceFromBase || distanceFromBase === 0) {
+        // Skip if we couldn't calculate distance (error case)
+        if (distanceFromBase === null) {
           return null;
         }
 
-        // Early termination: if we find an exact match, return immediately
+        // Allow distance of 0 only if candidate is at merge-base (freshly created branch)
+        // Reject distance of 0 when candidate has diverged from merge-base
+        if (distanceFromBase === 0 && !isExactMatch) {
+          return null;
+        }
+
+        // Exact match: candidate is at merge-base (hasn't moved since child branched)
         if (isExactMatch) {
           return {
             branch: candidate,
@@ -217,17 +253,21 @@ export class StackDetector {
           };
         }
 
-        // Check distance from merge-base to candidate
+        // Allow parent to have moved forward, but not too far
+        // This handles the case where you branch off main, then main gets more commits
         const distanceToCandidate = await this.getCommitDistanceCached(mergeBase, candidate);
 
-        // Only consider as parent if distance from merge-base to candidate is small
-        if (distanceToCandidate !== null && distanceToCandidate <= 10) {
+        if (distanceToCandidate !== null && distanceToCandidate <= 50) {
+          // Prefer common base branches (main, master, develop) as parents
+          const commonBases = ['main', 'master', 'develop', 'dev'];
+          const isCommonBase = commonBases.includes(candidate);
+          
           return {
             branch: candidate,
             mergeBase,
             distance: distanceFromBase,
             isExactMatch: false,
-            priority: 1,
+            priority: isCommonBase ? 1 : 2, // Common bases get higher priority
           };
         }
 
@@ -287,10 +327,10 @@ export class StackDetector {
   /**
    * Group branches into stacks based on relationships
    */
-  private groupIntoStacks(
+  private async groupIntoStacks(
     relationships: Map<string, BranchRelationship>,
     worktrees: Worktree[]
-  ): Map<string, Stack> {
+  ): Promise<Map<string, Stack>> {
     const stacks = new Map<string, Stack>();
     const branchToRoot = new Map<string, string>();
 
@@ -332,7 +372,7 @@ export class StackDetector {
 
     // Build stack nodes with depth information
     for (const [root, stack] of stacks.entries()) {
-      this.buildStackNodes(stack, relationships, worktrees);
+      await this.buildStackNodes(stack, relationships, worktrees);
     }
 
     return stacks;
@@ -341,11 +381,11 @@ export class StackDetector {
   /**
    * Build detailed node information for a stack
    */
-  private buildStackNodes(
+  private async buildStackNodes(
     stack: Stack,
     relationships: Map<string, BranchRelationship>,
     worktrees: Worktree[]
-  ): void {
+  ): Promise<void> {
     const worktreeMap = new Map<string, Worktree>();
     for (const wt of worktrees) {
       if (wt.branch) {
@@ -373,6 +413,22 @@ export class StackDetector {
       }
     }
 
+    // Fetch commit hashes for all branches in parallel
+    const commitHashes = await Promise.allSettled(
+      stack.branches.map(async (branch) => {
+        const commit = await this.revParseCached(branch);
+        return { branch, commit };
+      })
+    );
+
+    const commitMap = new Map<string, string>();
+    commitHashes
+      .filter((r) => r.status === 'fulfilled')
+      .forEach((r) => {
+        const { branch, commit } = (r as PromiseFulfilledResult<{ branch: string; commit: string }>).value;
+        commitMap.set(branch, commit);
+      });
+
     // Create nodes
     for (const branch of stack.branches) {
       const rel = relationships.get(branch)!;
@@ -383,6 +439,7 @@ export class StackDetector {
         worktree: worktreeMap.get(branch) || null,
         color: stack.color,
         depth: depths.get(branch) || 0,
+        commit: commitMap.get(branch),
       };
       stack.nodes.set(branch, node);
     }

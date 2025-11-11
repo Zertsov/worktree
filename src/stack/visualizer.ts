@@ -115,6 +115,22 @@ export class StackVisualizer {
       line += colors.dim(' [worktree]');
     }
 
+    // Check if this branch shares the same commit with siblings
+    if (node.parent && node.commit) {
+      const parentNode = stack.nodes.get(node.parent);
+      if (parentNode) {
+        const siblings = parentNode.children
+          .filter((sibling) => sibling !== node.branch)
+          .map((sibling) => stack.nodes.get(sibling))
+          .filter((s): s is StackNode => s !== undefined && s.commit === node.commit);
+        
+        if (siblings.length > 0) {
+          const siblingNames = siblings.map((s) => s.branch).join(', ');
+          line += colors.dim(` [same commit as ${siblingNames}]`);
+        }
+      }
+    }
+
     lines.push(line);
 
     // Process children
