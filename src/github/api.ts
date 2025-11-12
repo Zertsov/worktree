@@ -181,6 +181,19 @@ export class GitHubAPI {
         const errorJson = JSON.parse(errorBody);
         if (errorJson.message) {
           errorMessage = errorJson.message;
+          
+          // Include detailed errors if available
+          if (errorJson.errors && Array.isArray(errorJson.errors)) {
+            const details = errorJson.errors
+              .map((e: any) => {
+                if (typeof e === 'string') return e;
+                if (e.message) return e.message;
+                if (e.resource && e.field) return `${e.resource}.${e.field}: ${e.code || 'invalid'}`;
+                return JSON.stringify(e);
+              })
+              .join('; ');
+            errorMessage += ` (${details})`;
+          }
         }
       } catch {
         // Error body is not JSON, use default message

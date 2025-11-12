@@ -399,14 +399,25 @@ async function createPRForBranch(
     };
   }
 
-  // Check if branch exists on remote
-  const branchExists = await github.remoteBranchExists(node.branch);
-  if (!branchExists) {
+  // Check if head branch exists on remote
+  const headExists = await github.remoteBranchExists(node.branch);
+  if (!headExists) {
     return {
       branch: node.branch,
       success: false,
       skipped: true,
-      skipReason: 'Branch not pushed to remote',
+      skipReason: `Branch '${node.branch}' not pushed to remote`,
+    };
+  }
+
+  // Check if base branch exists on remote
+  const baseExists = await github.remoteBranchExists(node.parent);
+  if (!baseExists) {
+    return {
+      branch: node.branch,
+      success: false,
+      skipped: true,
+      skipReason: `Base branch '${node.parent}' not pushed to remote`,
     };
   }
 
