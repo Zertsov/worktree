@@ -66,6 +66,40 @@ worktree stack          # Display full stack visualization
 worktree pr             # Create GitHub PRs for stack branches
 ```
 
+### Command Reference
+
+#### `worktree list` / `worktree ls`
+- `-t, --tree` Show worktrees as a tree with explicit parent/child relationships
+- `-v, --verbose` Display extra metadata (git status, paths, etc.)
+- `-s, --simple` Output the raw `git worktree list` format
+- `--no-stack` Skip stack detection for faster output
+- `-h, --help` Show command-specific usage
+
+#### `worktree add` / `worktree new`
+- `-b, --base <branch>` Use a different base branch before creating the new one
+- `-p, --path <path>` Provide a target directory (otherwise defaults to `../<repo>-<branch>`)
+- `-f, --force` Skip confirmations (useful for scripting)
+- `-h, --help` Show command-specific usage
+
+#### `worktree remove` / `worktree rm`
+- `-f, --force` Remove even if there are uncommitted changes
+- `-h, --help` Show command-specific usage
+
+#### `worktree prune`
+- `-n, --dry-run` Show what would be pruned without making changes
+- `-f, --force` Skip the confirmation prompt
+- `-h, --help` Show command-specific usage
+
+#### `worktree stack`
+- `-v, --verbose` Include worktree paths and extra metadata in the stack view
+- `-h, --help` Show command-specific usage
+
+#### `worktree pr`
+- `-y, --yes` Run headless and auto-create PRs without prompts
+- `-t, --title <template>` Override the PR title using `{branch}` placeholders
+- `-d, --description <text>` Provide a body/description for each PR
+- `-h, --help` Show command-specific usage
+
 ## GitHub PR Integration
 
 The `worktree pr` command allows you to create pull requests for branches in your stack.
@@ -115,4 +149,3 @@ worktree pr -y -d "Auto-generated PR from stack"
 bun install
 bun run dev -- list
 ```
-
