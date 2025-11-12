@@ -42,13 +42,16 @@ To use the PR feature, you need a GitHub Personal Access Token (PAT) with the fo
 
 #### Creating a GitHub PAT:
 
-1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. Click "Generate new token (classic)"
-3. Select the following scopes:
-   - `repo` (or at minimum: `public_repo` for public repos)
-     - This includes both Pull Requests and Contents permissions
-4. Generate and copy the token
-5. The CLI will use the token via:
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+2. Click "Generate new token"
+3. Under "Repository access", select "All repositories":
+4. Add the following permissions for repositories:
+   - `Pull requests`
+     - This will automatically add Metadata - this is fine
+   - `Contents`
+     - Without this, the PR creation will fail validation
+5. Generate and copy the token
+6. The CLI will use the token via:
    - GitHub CLI (`gh`) if authenticated
    - `GITHUB_TOKEN` or `GH_TOKEN` environment variable
    - Interactive prompt if neither is available
