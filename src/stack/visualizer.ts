@@ -110,9 +110,23 @@ export class StackVisualizer {
       line += colors.dim(` → ${node.worktree.path}`);
     }
 
-    // Add worktree indicator
-    if (node.worktree) {
-      line += colors.dim(' [worktree]');
+    // For root nodes (depth === 0), show special indicators
+    if (node.depth === 0) {
+      // Show parent branch if this stack has a parent
+      if (node.parent) {
+        line += colors.dim(` (based on ${node.parent})`);
+      }
+
+      // Check if ANY branch in this stack has a worktree
+      const hasWorktree = Array.from(stack.nodes.values()).some(n => n.worktree);
+      if (hasWorktree) {
+        line += colors.dim(' [worktree]');
+      }
+    } else {
+      // For non-root nodes, show worktree indicator only on the specific branch
+      if (node.worktree) {
+        line += colors.dim(' [worktree]');
+      }
     }
 
     // Check if this branch shares the same commit with siblings

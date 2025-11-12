@@ -334,10 +334,20 @@ export class StackDetector {
     const stacks = new Map<string, Stack>();
     const branchToRoot = new Map<string, string>();
 
-    // Find all root branches (branches without parents)
+    // Find all stack roots:
+    // 1. Branches without parents (traditional roots like main)
+    // 2. Branches that have children (form their own sub-stacks)
     const roots = Array.from(relationships.values())
-      .filter((rel) => !rel.parent)
+      .filter((rel) => !rel.parent || rel.children.length > 0)
       .map((rel) => rel.branch);
+
+    // Identify which branches should be treated as sub-stack roots
+    // (branches with both a parent AND children)
+    const subStackRoots = new Set<string>(
+      Array.from(relationships.values())
+        .filter((rel) => rel.parent && rel.children.length > 0)
+        .map((rel) => rel.branch)
+    );
 
     // Build stacks from each root
     for (const root of roots) {
@@ -363,8 +373,15 @@ export class StackDetector {
         stack.branches.push(current);
         branchToRoot.set(current, root);
 
-        // Add children to queue
-        queue.push(...rel.children);
+        // Add children to queue, but skip those that are sub-stack roots
+        // (unless we're currently building that sub-stack)
+        for (const child of rel.children) {
+          if (child !== root && subStackRoots.has(child)) {
+            // This child is a sub-stack root, don't include it in parent's stack
+            continue;
+          }
+          queue.push(child);
+        }
       }
 
       stacks.set(root, stack);
