@@ -13,13 +13,43 @@ A modern CLI tool for managing git worktrees with stack visualization, inspired 
 
 ## Installation
 
-### From Source
+### Via Homebrew (Recommended)
 
 ```bash
+# Add the tap
+brew tap Zertsov/worktree
+
+# Install worktree
+brew install worktree
+
+# Or install in one command
+brew install Zertsov/worktree/worktree
+```
+
+### From Source
+
+Requires [Bun](https://bun.sh) to be installed.
+
+```bash
+git clone https://github.com/Zertsov/worktree.git
+cd wt
 bun install
-bun run build
-# Optional, allows for worktree to be executed globally
-bun link
+bun run build:prod
+
+# Add to your PATH or create a symlink
+ln -s $(pwd)/dist/worktree /usr/local/bin/worktree
+```
+
+### From Release Binary
+
+Download the latest release for your platform from the [releases page](https://github.com/YOUR_USERNAME/wt/releases):
+
+```bash
+# Example for macOS ARM64
+curl -LO https://github.com/Zertsov/wt/releases/latest/download/worktree-VERSION-macos-arm64.tar.gz
+tar -xzf worktree-VERSION-macos-arm64.tar.gz
+chmod +x worktree-macos-arm64
+sudo mv worktree-macos-arm64 /usr/local/bin/worktree
 ```
 
 ### Releases

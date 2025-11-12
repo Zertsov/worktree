@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Get version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  build-binaries:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: macos-arm64
+            arch: arm64
+          - os: macos-13
+            target: macos-x64
+            arch: x64
+          - os: ubuntu-latest
+            target: linux-x64
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary
+        run: |
+          bun build src/index.ts --target bun --compile --outfile worktree-${{ matrix.target }}
+          chmod +x worktree-${{ matrix.target }}
+
+      - name: Create tarball
+        run: |
+          tar -czf worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz worktree-${{ matrix.target }}
+
+      - name: Calculate SHA256
+        run: |
+          shasum -a 256 worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
+          asset_name: worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload SHA256
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          asset_name: worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          asset_content_type: text/plain
+
