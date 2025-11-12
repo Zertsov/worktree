@@ -13,10 +13,17 @@ A modern CLI tool for managing git worktrees with stack visualization, inspired 
 
 ## Installation
 
+### From Source
+
 ```bash
 bun install
 bun run build
+# Optional, allows for worktree to be executed globally
+bun link
 ```
+
+### Releases
+A binary is also available on the releases page. Download and add it to your PATH.
 
 ## Usage
 
