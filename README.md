@@ -32,7 +32,7 @@ Requires [Bun](https://bun.sh) to be installed.
 
 ```bash
 git clone https://github.com/Zertsov/worktree.git
-cd wt
+cd worktree
 bun install
 bun run build:prod
 
@@ -46,7 +46,7 @@ Download the latest release for your platform from the [releases page](https://g
 
 ```bash
 # Example for macOS ARM64
-curl -LO https://github.com/Zertsov/wt/releases/latest/download/worktree-VERSION-macos-arm64.tar.gz
+curl -LO https://github.com/Zertsov/worktree/releases/latest/download/worktree-VERSION-macos-arm64.tar.gz
 tar -xzf worktree-VERSION-macos-arm64.tar.gz
 chmod +x worktree-macos-arm64
 sudo mv worktree-macos-arm64 /usr/local/bin/worktree
