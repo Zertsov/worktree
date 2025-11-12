@@ -5,27 +5,30 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Get version from tag
         id: get_version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "Release ${{ github.ref_name }}" \
+            --generate-notes
 
   build-binaries:
     needs: create-release
@@ -69,23 +72,11 @@ jobs:
         run: |
           shasum -a 256 worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+      - name: Upload Release Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_name: worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload SHA256
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-          asset_name: worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-          asset_content_type: text/plain
+        run: |
+          gh release upload ${{ github.ref_name }} \
+            worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz \
+            worktree-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
 
