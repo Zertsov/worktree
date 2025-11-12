@@ -9,6 +9,7 @@ A modern CLI tool for managing git worktrees with stack visualization, inspired 
 - Color-coordinated display for multiple stacks
 - Interactive prompts for safe operations
 - Branch parent-child relationship tracking
+- GitHub PR creation for stacks
 
 ## Installation
 
@@ -25,6 +26,47 @@ worktree add <branch>   # Add a new worktree
 worktree remove <path>  # Remove a worktree
 worktree prune          # Clean up stale worktree references
 worktree stack          # Display full stack visualization
+worktree pr             # Create GitHub PRs for stack branches
+```
+
+## GitHub PR Integration
+
+The `worktree pr` command allows you to create pull requests for branches in your stack.
+
+### Setup
+
+To use the PR feature, you need a GitHub Personal Access Token (PAT) with the following permissions:
+
+1. **Pull Requests** (Read and write)
+2. **Contents** (Read-only)
+
+#### Creating a GitHub PAT:
+
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. Click "Generate new token (classic)"
+3. Select the following scopes:
+   - `repo` (or at minimum: `public_repo` for public repos)
+     - This includes both Pull Requests and Contents permissions
+4. Generate and copy the token
+5. The CLI will use the token via:
+   - GitHub CLI (`gh`) if authenticated
+   - `GITHUB_TOKEN` or `GH_TOKEN` environment variable
+   - Interactive prompt if neither is available
+
+### Usage
+
+```bash
+# Interactive mode - select branches and customize PRs
+worktree pr
+
+# Headless mode - auto-create PRs for current branch + descendants
+worktree pr -y
+
+# With custom title template
+worktree pr -y -t "feat: {branch}"
+
+# With description
+worktree pr -y -d "Auto-generated PR from stack"
 ```
 
 ## Development
