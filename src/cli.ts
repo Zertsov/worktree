@@ -11,6 +11,7 @@ import { pruneCommand } from './commands/prune.js';
 import { stackCommand } from './commands/stack.js';
 import { stackInitCommand } from './commands/stack/init.js';
 import { stackBranchCommand } from './commands/stack/branch.js';
+import { stackStatusCommand } from './commands/stack/status.js';
 import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
@@ -224,6 +225,10 @@ async function handleStackCommand(args: string[]): Promise<void> {
       await handleStackBranchCommand(rest);
       return;
 
+    case 'status':
+      await handleStackStatusCommand(rest);
+      return;
+
     case '-h':
     case '--help':
     case 'help':
@@ -331,6 +336,28 @@ async function handleStackBranchCommand(args: string[]): Promise<void> {
   }
 
   await stackBranchCommand(branchName, options);
+}
+
+async function handleStackStatusCommand(args: string[]): Promise<void> {
+  const options: { verbose?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-v':
+      case '--verbose':
+        options.verbose = true;
+        break;
+      case '-h':
+      case '--help':
+        showStackStatusHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackStatusCommand(options);
 }
 
 async function handlePRCommand(args: string[]): Promise<void> {
@@ -568,6 +595,29 @@ ${pc.bold('Examples:')}
   worktree stack branch feature/login            # Create child branch
   worktree stack branch feature/oauth -w         # With worktree
   worktree stack branch fix/bug -p ../fix-bug    # Custom worktree path
+`);
+}
+
+function showStackStatusHelp(): void {
+  console.log(`
+${pc.bold('worktree stack status')} - Show sync status for stack branches
+
+${pc.bold('Usage:')}
+  worktree stack status [options]
+
+${pc.bold('Options:')}
+  -v, --verbose        Show detailed status information
+  -h, --help           Show help
+
+${pc.bold('Status indicators:')}
+  ${pc.green('✓')}                  Branch is synced with parent
+  ${pc.yellow('⚠ +N commits')}      Parent has N new commits, needs sync
+  ${pc.red('⚠ diverged')}        Branch has diverged from parent
+  ${pc.red('✗')}                  Error checking status
+
+${pc.bold('Examples:')}
+  worktree stack status              # Show sync status
+  worktree stack status -v           # With verbose details
 `);
 }
 
