@@ -13,6 +13,7 @@ import { stackInitCommand } from './commands/stack/init.js';
 import { stackBranchCommand } from './commands/stack/branch.js';
 import { stackStatusCommand } from './commands/stack/status.js';
 import { stackSyncCommand } from './commands/stack/sync.js';
+import { stackRestackCommand } from './commands/stack/restack.js';
 import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
@@ -234,6 +235,10 @@ async function handleStackCommand(args: string[]): Promise<void> {
       await handleStackSyncCommand(rest);
       return;
 
+    case 'restack':
+      await handleStackRestackCommand(rest);
+      return;
+
     case '-h':
     case '--help':
     case 'help':
@@ -393,6 +398,28 @@ async function handleStackSyncCommand(args: string[]): Promise<void> {
   }
 
   await stackSyncCommand(options);
+}
+
+async function handleStackRestackCommand(args: string[]): Promise<void> {
+  const options: { force?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-f':
+      case '--force':
+        options.force = true;
+        break;
+      case '-h':
+      case '--help':
+        showStackRestackHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackRestackCommand(options);
 }
 
 async function handlePRCommand(args: string[]): Promise<void> {
@@ -559,6 +586,7 @@ ${pc.bold('Subcommands:')}
   ${pc.cyan('branch')}             Create a child branch in the current stack
   ${pc.cyan('status')}             Show sync status for stack branches
   ${pc.cyan('sync')}               Sync branches with their parents
+  ${pc.cyan('restack')}            Re-record base commits after manual operations
   ${pc.dim('(no subcommand)')}   Show managed stacks
 
 ${pc.bold('Options:')}
@@ -680,6 +708,34 @@ ${pc.bold('Examples:')}
   worktree stack sync                # Rebase mode (default)
   worktree stack sync --merge        # Merge mode
   worktree stack sync --push         # Push after syncing
+`);
+}
+
+function showStackRestackHelp(): void {
+  console.log(`
+${pc.bold('worktree stack restack')} - Re-record base commits after manual operations
+
+${pc.bold('Usage:')}
+  worktree stack restack [options]
+
+${pc.bold('Options:')}
+  -f, --force          Skip confirmation prompt
+  -h, --help           Show help
+
+${pc.bold('When to use:')}
+  After manual git operations that change branch relationships:
+  - Manual rebases
+  - Force pushes
+  - Interactive rebases
+  - Cherry-picks
+
+${pc.bold('What it does:')}
+  Updates the recorded base commit for each branch to match
+  the current HEAD of its parent branch.
+
+${pc.bold('Examples:')}
+  worktree stack restack             # Interactive mode
+  worktree stack restack --force     # Skip confirmation
 `);
 }
 
