@@ -14,6 +14,7 @@ import { stackBranchCommand } from './commands/stack/branch.js';
 import { stackStatusCommand } from './commands/stack/status.js';
 import { stackSyncCommand } from './commands/stack/sync.js';
 import { stackRestackCommand } from './commands/stack/restack.js';
+import { stackPRCommand } from './commands/stack/pr.js';
 import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
@@ -239,6 +240,10 @@ async function handleStackCommand(args: string[]): Promise<void> {
       await handleStackRestackCommand(rest);
       return;
 
+    case 'pr':
+      await handleStackPRCommand(rest);
+      return;
+
     case '-h':
     case '--help':
     case 'help':
@@ -422,6 +427,36 @@ async function handleStackRestackCommand(args: string[]): Promise<void> {
   await stackRestackCommand(options);
 }
 
+async function handleStackPRCommand(args: string[]): Promise<void> {
+  const options: { yes?: boolean; link?: boolean; updateExisting?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-y':
+      case '--yes':
+        options.yes = true;
+        break;
+      case '-l':
+      case '--link':
+        options.link = true;
+        break;
+      case '-u':
+      case '--update-existing':
+        options.updateExisting = true;
+        break;
+      case '-h':
+      case '--help':
+        showStackPRHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackPRCommand(options);
+}
+
 async function handlePRCommand(args: string[]): Promise<void> {
   const options: { yes?: boolean; title?: string; description?: string } = {};
 
@@ -587,6 +622,7 @@ ${pc.bold('Subcommands:')}
   ${pc.cyan('status')}             Show sync status for stack branches
   ${pc.cyan('sync')}               Sync branches with their parents
   ${pc.cyan('restack')}            Re-record base commits after manual operations
+  ${pc.cyan('pr')}                 Create GitHub PRs for stack branches
   ${pc.dim('(no subcommand)')}   Show managed stacks
 
 ${pc.bold('Options:')}
@@ -736,6 +772,36 @@ ${pc.bold('What it does:')}
 ${pc.bold('Examples:')}
   worktree stack restack             # Interactive mode
   worktree stack restack --force     # Skip confirmation
+`);
+}
+
+function showStackPRHelp(): void {
+  console.log(`
+${pc.bold('worktree stack pr')} - Create GitHub PRs for stack branches
+
+${pc.bold('Usage:')}
+  worktree stack pr [options]
+
+${pc.bold('Options:')}
+  -y, --yes              Headless mode (create all PRs automatically)
+  -l, --link             Add stack navigation to PR descriptions
+  -u, --update-existing  Update existing PRs with navigation (use with --link)
+  -h, --help             Show help
+
+${pc.bold('Stack navigation:')}
+  When using --link, PRs will include a navigation table:
+  
+  | | Branch | PR |
+  |---|--------|-----|
+  | ⬆️ | parent-branch | #101 |
+  | → | current-branch | this PR |
+  | ⬇️ | child-branch | #103 |
+
+${pc.bold('Examples:')}
+  worktree stack pr                      # Interactive mode
+  worktree stack pr -y                   # Create all PRs automatically
+  worktree stack pr -y --link            # With stack navigation
+  worktree stack pr --link -u            # Update existing PRs with navigation
 `);
 }
 

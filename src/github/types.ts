@@ -11,6 +11,7 @@ export interface GitHubRepo {
 export interface GitHubPR {
   number: number;
   title: string;
+  body: string | null;
   html_url: string;
   head: {
     ref: string;
