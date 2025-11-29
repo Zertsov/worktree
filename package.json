@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
+    "neverthrow": "^8.2.0",
     "picocolors": "^1.0.0"
   },
   "devDependencies": {
