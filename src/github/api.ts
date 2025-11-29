@@ -261,5 +261,34 @@ export class GitHubAPI {
       return false;
     }
   }
+
+  /**
+   * Update a PR (title, body, etc.)
+   */
+  async updatePR(
+    prNumber: number,
+    updates: { title?: string; body?: string }
+  ): Promise<GitHubPR> {
+    const repo = await this.getRepoInfo();
+
+    return await this.apiRequest<GitHubPR>(
+      `/repos/${repo.owner}/${repo.repo}/pulls/${prNumber}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      }
+    );
+  }
+
+  /**
+   * Get all open PRs for the repository
+   */
+  async getAllOpenPRs(): Promise<GitHubPR[]> {
+    const repo = await this.getRepoInfo();
+
+    return await this.apiRequest<GitHubPR[]>(
+      `/repos/${repo.owner}/${repo.repo}/pulls?state=open&per_page=100`
+    );
+  }
 }
 
