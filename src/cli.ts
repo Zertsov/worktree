@@ -12,6 +12,7 @@ import { stackCommand } from './commands/stack.js';
 import { stackInitCommand } from './commands/stack/init.js';
 import { stackBranchCommand } from './commands/stack/branch.js';
 import { stackStatusCommand } from './commands/stack/status.js';
+import { stackSyncCommand } from './commands/stack/sync.js';
 import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
@@ -229,6 +230,10 @@ async function handleStackCommand(args: string[]): Promise<void> {
       await handleStackStatusCommand(rest);
       return;
 
+    case 'sync':
+      await handleStackSyncCommand(rest);
+      return;
+
     case '-h':
     case '--help':
     case 'help':
@@ -358,6 +363,36 @@ async function handleStackStatusCommand(args: string[]): Promise<void> {
   }
 
   await stackStatusCommand(options);
+}
+
+async function handleStackSyncCommand(args: string[]): Promise<void> {
+  const options: { merge?: boolean; force?: boolean; push?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-m':
+      case '--merge':
+        options.merge = true;
+        break;
+      case '-f':
+      case '--force':
+        options.force = true;
+        break;
+      case '-p':
+      case '--push':
+        options.push = true;
+        break;
+      case '-h':
+      case '--help':
+        showStackSyncHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackSyncCommand(options);
 }
 
 async function handlePRCommand(args: string[]): Promise<void> {
@@ -618,6 +653,33 @@ ${pc.bold('Status indicators:')}
 ${pc.bold('Examples:')}
   worktree stack status              # Show sync status
   worktree stack status -v           # With verbose details
+`);
+}
+
+function showStackSyncHelp(): void {
+  console.log(`
+${pc.bold('worktree stack sync')} - Sync branches with their parents
+
+${pc.bold('Usage:')}
+  worktree stack sync [options]
+
+${pc.bold('Options:')}
+  -m, --merge          Use merge instead of rebase
+  -f, --force          Proceed even with uncommitted changes
+  -p, --push           Push branches after syncing
+  -h, --help           Show help
+
+${pc.bold('Behavior:')}
+  1. Fetches latest from remote
+  2. For each branch that needs sync (in order):
+     - Rebase (default) or merge onto parent
+     - Update tracking commit
+  3. If conflict: stops and shows resolution steps
+
+${pc.bold('Examples:')}
+  worktree stack sync                # Rebase mode (default)
+  worktree stack sync --merge        # Merge mode
+  worktree stack sync --push         # Push after syncing
 `);
 }
 
