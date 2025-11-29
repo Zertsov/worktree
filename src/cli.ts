@@ -10,6 +10,7 @@ import { removeCommand } from './commands/remove.js';
 import { pruneCommand } from './commands/prune.js';
 import { stackCommand } from './commands/stack.js';
 import { stackInitCommand } from './commands/stack/init.js';
+import { stackBranchCommand } from './commands/stack/branch.js';
 import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
@@ -219,6 +220,10 @@ async function handleStackCommand(args: string[]): Promise<void> {
       await handleStackInitCommand(rest);
       return;
 
+    case 'branch':
+      await handleStackBranchCommand(rest);
+      return;
+
     case '-h':
     case '--help':
     case 'help':
@@ -282,6 +287,46 @@ async function handleStackInitCommand(args: string[]): Promise<void> {
   }
 
   await stackInitCommand({ trunk: options.trunk, name: options.name });
+}
+
+async function handleStackBranchCommand(args: string[]): Promise<void> {
+  const options: { worktree?: boolean; path?: string } = {};
+  let branchName = '';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    switch (arg) {
+      case '-w':
+      case '--worktree':
+        options.worktree = true;
+        break;
+      case '-p':
+      case '--path':
+        options.path = args[++i];
+        options.worktree = true;
+        break;
+      case '-h':
+      case '--help':
+        showStackBranchHelp();
+        return;
+      default:
+        if (!branchName && !arg.startsWith('-')) {
+          branchName = arg;
+        } else {
+          clack.log.error(`Unexpected argument: ${arg}`);
+          process.exit(1);
+        }
+    }
+  }
+
+  if (!branchName) {
+    clack.log.error('Branch name is required');
+    showStackBranchHelp();
+    process.exit(1);
+  }
+
+  await stackBranchCommand(branchName, options);
 }
 
 async function handlePRCommand(args: string[]): Promise<void> {
@@ -490,6 +535,33 @@ ${pc.bold('Examples:')}
   worktree stack init --trunk main              # Initialize stack targeting main
   worktree stack init main                      # Same, positional argument
   worktree stack init -t develop -n my-feature  # Custom stack name
+`);
+}
+
+function showStackBranchHelp(): void {
+  console.log(`
+${pc.bold('worktree stack branch')} - Create a child branch in the current stack
+
+${pc.bold('Usage:')}
+  worktree stack branch <name> [options]
+
+${pc.bold('Arguments:')}
+  name                 Name for the new branch (required)
+
+${pc.bold('Options:')}
+  -w, --worktree       Also create a worktree for the new branch
+  -p, --path <path>    Custom path for worktree (implies --worktree)
+  -h, --help           Show help
+
+${pc.bold('What this does:')}
+  1. Creates a new branch from current HEAD
+  2. Records parent branch and base commit for sync detection
+  3. Optionally creates a worktree for parallel work
+
+${pc.bold('Examples:')}
+  worktree stack branch feature/login            # Create child branch
+  worktree stack branch feature/oauth -w         # With worktree
+  worktree stack branch fix/bug -p ../fix-bug    # Custom worktree path
 `);
 }
 
