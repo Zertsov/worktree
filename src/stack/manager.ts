@@ -4,6 +4,7 @@
 
 import { Result } from 'neverthrow';
 import { GitOperations } from '../git/operations.js';
+import { type IGitOperations, defaultGitOps } from '../git/interface.js';
 import {
   StackResult,
   StackErrors,
@@ -53,7 +54,14 @@ export interface StackInfo {
  *   branch.<name>.stackbase = "abc123def"
  */
 export class StackManager {
-  constructor(private readonly repoRoot: string) {}
+  private readonly git: IGitOperations;
+
+  constructor(
+    private readonly repoRoot: string,
+    gitOps?: IGitOperations
+  ) {
+    this.git = gitOps || defaultGitOps;
+  }
 
   /**
    * Initialize a new stack from the current branch
@@ -64,7 +72,7 @@ export class StackManager {
     rootBranch: string
   ): Promise<StackResult<StackMetadata>> {
     // Verify trunk branch exists
-    const trunkExists = await GitOperations.branchExists(trunk, this.repoRoot);
+    const trunkExists = await this.git.branchExists(trunk, this.repoRoot);
     if (!trunkExists) {
       return StackErrors.invalidTrunk(trunk);
     }
@@ -225,7 +233,7 @@ export class StackManager {
    * Get all stacks in the repository
    */
   async getAllStacks(): Promise<StackResult<StackMetadata[]>> {
-    const result = await GitOperations.exec(
+    const result = await this.git.exec(
       ['config', '--get-regexp', '^stacks\\..*\\.trunk$'],
       this.repoRoot
     );
@@ -257,7 +265,7 @@ export class StackManager {
    * Get all branches in a stack
    */
   async getStackBranches(stackName: string): Promise<StackResult<Map<string, BranchStackMetadata>>> {
-    const result = await GitOperations.exec(
+    const result = await this.git.exec(
       ['config', '--get-regexp', `^branch\\..*\\.stackname$`],
       this.repoRoot
     );
@@ -358,7 +366,7 @@ export class StackManager {
    * Get the stack name for the current branch
    */
   async getCurrentBranchStack(): Promise<StackResult<string>> {
-    const currentBranch = await GitOperations.getCurrentBranch(this.repoRoot);
+    const currentBranch = await this.git.getCurrentBranch(this.repoRoot);
     if (!currentBranch) {
       return StackErrors.notInRepo();
     }
@@ -375,7 +383,7 @@ export class StackManager {
 
   private async getCurrentCommit(): Promise<StackResult<string>> {
     try {
-      const commit = await GitOperations.execOrThrow(
+      const commit = await this.git.execOrThrow(
         ['rev-parse', 'HEAD'],
         this.repoRoot
       );
@@ -386,7 +394,7 @@ export class StackManager {
   }
 
   private async getGitConfig(key: string): Promise<StackResult<string | null>> {
-    const result = await GitOperations.exec(
+    const result = await this.git.exec(
       ['config', '--get', key],
       this.repoRoot
     );
@@ -401,7 +409,7 @@ export class StackManager {
 
   private async setGitConfig(key: string, value: string): Promise<StackResult<void>> {
     try {
-      await GitOperations.execOrThrow(
+      await this.git.execOrThrow(
         ['config', key, value],
         this.repoRoot
       );
@@ -412,7 +420,7 @@ export class StackManager {
   }
 
   private async unsetGitConfig(key: string): Promise<StackResult<void>> {
-    const result = await GitOperations.exec(
+    const result = await this.git.exec(
       ['config', '--unset', key],
       this.repoRoot
     );
