@@ -44,7 +44,7 @@ export async function stackStatusCommand(options: StackStatusOptions = {}): Prom
     if (allStacks.isErr() || allStacks.value.length === 0) {
       clack.cancel(
         'No stacks found.\n\n' +
-          `Initialize a stack with: ${pc.cyan('worktree stack init --trunk <branch>')}`
+          `Initialize a stack with: ${pc.cyan('stacks init <trunk>')}`
       );
       process.exit(1);
     }
@@ -146,7 +146,7 @@ async function displayStackStatus(
       console.log(pc.dim(`  ${divergedCount} branch${divergedCount !== 1 ? 'es' : ''} diverged`));
     }
     console.log('');
-    console.log(`Run ${pc.cyan('worktree stack sync')} to update branches.`);
+    console.log(`Run ${pc.cyan('stacks sync')} to update branches.`);
   } else {
     console.log(pc.green('✓') + ' ' + pc.bold('All branches synced'));
   }

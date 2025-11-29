@@ -94,7 +94,7 @@ export const StackErrors = {
       'STACK_NOT_FOUND',
       name ? `Stack '${name}' not found` : 'Current branch is not part of a stack',
       { name },
-      "Initialize a stack with 'worktree stack init --trunk <branch>'"
+      "Initialize a stack with 'stacks init <trunk>'"
     ),
 
   stackExists: (name: string) =>
@@ -110,7 +110,7 @@ export const StackErrors = {
       'ALREADY_IN_STACK',
       `Branch '${branch}' is already in stack '${stack}'`,
       { branch, stack },
-      `Remove it from the stack first with 'worktree stack remove ${branch}'`
+      `Remove it from the stack first with 'stacks remove ${branch}'`
     ),
 
   notInStack: (branch: string) =>
@@ -118,7 +118,7 @@ export const StackErrors = {
       'NOT_IN_STACK',
       `Branch '${branch}' is not part of any stack`,
       { branch },
-      "Add it to a stack with 'worktree stack adopt' or create a new stack"
+      "Add it to a stack with 'stacks adopt' or create a new stack"
     ),
 
   syncConflict: (branch: string, files: string[]) =>

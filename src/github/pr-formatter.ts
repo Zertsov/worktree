@@ -27,8 +27,8 @@ export interface StackNavigationInfo {
 /**
  * Markers for identifying managed sections in PR description
  */
-const STACK_SECTION_START = '<!-- worktree-stack-start -->';
-const STACK_SECTION_END = '<!-- worktree-stack-end -->';
+const STACK_SECTION_START = '<!-- stacks-nav-start -->';
+const STACK_SECTION_END = '<!-- stacks-nav-end -->';
 
 /**
  * Format stack navigation as markdown for PR description
@@ -68,7 +68,7 @@ export function formatStackNavigation(info: StackNavigationInfo): string {
   }
 
   lines.push('');
-  lines.push(`<sub>Part of stack \`${info.stackName}\` · Managed by [worktree](https://github.com/Zertsov/worktree)</sub>`);
+  lines.push(`<sub>Part of stack \`${info.stackName}\` · Managed by [stacks](https://github.com/Zertsov/stacks)</sub>`);
   lines.push('');
   lines.push(STACK_SECTION_END);
 

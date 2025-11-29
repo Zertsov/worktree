@@ -1,17 +1,17 @@
 {
-  "name": "worktree-cli",
-  "version": "0.0.1",
+  "name": "stacks-cli",
+  "version": "0.1.0",
   "type": "module",
-  "description": "A modern CLI tool for managing git worktrees with stack visualization",
+  "description": "A modern CLI for managing stacked diffs with git",
   "bin": {
-    "worktree": "./dist/index.js"
+    "stacks": "./dist/index.js"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun --format esm",
-    "build:prod": "bun build src/index.ts --target bun --compile --outfile dist/worktree",
-    "build:macos-arm64": "bun build src/index.ts --target bun-darwin-arm64 --compile --outfile dist/worktree-macos-arm64",
-    "build:macos-x64": "bun build src/index.ts --target bun-darwin-x64 --compile --outfile dist/worktree-macos-x64",
-    "build:linux-x64": "bun build src/index.ts --target bun-linux-x64 --compile --outfile dist/worktree-linux-x64",
+    "build:prod": "bun build src/index.ts --target bun --compile --outfile dist/stacks",
+    "build:macos-arm64": "bun build src/index.ts --target bun-darwin-arm64 --compile --outfile dist/stacks-macos-arm64",
+    "build:macos-x64": "bun build src/index.ts --target bun-darwin-x64 --compile --outfile dist/stacks-macos-x64",
+    "build:linux-x64": "bun build src/index.ts --target bun-linux-x64 --compile --outfile dist/stacks-linux-x64",
     "build:all": "bun run build:macos-arm64 && bun run build:macos-x64 && bun run build:linux-x64",
     "dev": "bun run src/index.ts",
     "type-check": "tsc --noEmit"

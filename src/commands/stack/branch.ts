@@ -40,7 +40,7 @@ export async function stackBranchCommand(
   if (currentStackResult.isErr()) {
     clack.cancel(
       `Current branch '${currentBranch}' is not part of a stack.\n\n` +
-        `Initialize a stack first with: ${pc.cyan('worktree stack init --trunk <branch>')}`
+        `Initialize a stack first with: ${pc.cyan('stacks init <trunk>')}`
     );
     process.exit(1);
   }
@@ -52,7 +52,7 @@ export async function stackBranchCommand(
   if (branchExists) {
     clack.cancel(
       `Branch '${branchName}' already exists.\n\n` +
-        `To add an existing branch to the stack, use: ${pc.cyan(`worktree stack adopt ${branchName}`)}`
+        `To add an existing branch to the stack, use: ${pc.cyan(`stacks adopt ${branchName}`)}`
     );
     process.exit(1);
   }

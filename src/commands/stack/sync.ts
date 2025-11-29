@@ -43,7 +43,7 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
   if (!stackName) {
     clack.cancel(
       'Current branch is not part of a stack.\n\n' +
-        `Initialize a stack with: ${pc.cyan('worktree stack init --trunk <branch>')}`
+        `Initialize a stack with: ${pc.cyan('stacks init <trunk>')}`
     );
     process.exit(1);
   }
@@ -147,7 +147,7 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
         console.log(`    4. Resolve conflicts`);
         console.log(`    5. ${pc.dim('git add')} <files>`);
         console.log(`    6. ${pc.dim('git')} ${options.merge ? 'commit' : 'rebase --continue'}`);
-        console.log(`    7. ${pc.cyan('worktree stack sync')} to continue`);
+        console.log(`    7. ${pc.cyan('stacks sync')} to continue`);
       } else if (result.error) {
         console.log(pc.dim(`  Error: ${result.error}`));
       }

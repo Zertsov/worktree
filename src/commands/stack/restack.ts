@@ -41,7 +41,7 @@ export async function stackRestackCommand(options: StackRestackOptions = {}): Pr
   if (!stackName) {
     clack.cancel(
       'Current branch is not part of a stack.\n\n' +
-        `Initialize a stack with: ${pc.cyan('worktree stack init --trunk <branch>')}`
+        `Initialize a stack with: ${pc.cyan('stacks init <trunk>')}`
     );
     process.exit(1);
   }
@@ -106,7 +106,7 @@ export async function stackRestackCommand(options: StackRestackOptions = {}): Pr
   console.log('');
   console.log(pc.green('✓') + ' ' + pc.bold('Stack restacked successfully!'));
   console.log('');
-  console.log(pc.dim('Run ') + pc.cyan('worktree stack status') + pc.dim(' to verify sync status.'));
+  console.log(pc.dim('Run ') + pc.cyan('stacks status') + pc.dim(' to verify sync status.'));
   console.log('');
 }
 

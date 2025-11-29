@@ -55,7 +55,7 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
   if (branchStack.isErr()) {
     clack.cancel(
       `Current branch '${currentBranch}' is not part of a stack.\n\n` +
-        `Initialize a stack with: ${pc.cyan('worktree stack init --trunk <branch>')}`
+        `Initialize a stack with: ${pc.cyan('stacks init <trunk>')}`
     );
     process.exit(1);
   }

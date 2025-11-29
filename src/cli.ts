@@ -1,13 +1,11 @@
 /**
- * CLI argument parsing and command routing
+ * CLI - stacks: A modern CLI for managing stacked diffs
  */
 
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
-import { listCommand } from './commands/list.js';
-import { addCommand } from './commands/add.js';
-import { removeCommand } from './commands/remove.js';
-import { pruneCommand } from './commands/prune.js';
+
+// Stack commands (primary)
 import { stackCommand } from './commands/stack.js';
 import { stackInitCommand } from './commands/stack/init.js';
 import { stackBranchCommand } from './commands/stack/branch.js';
@@ -15,18 +13,20 @@ import { stackStatusCommand } from './commands/stack/status.js';
 import { stackSyncCommand } from './commands/stack/sync.js';
 import { stackRestackCommand } from './commands/stack/restack.js';
 import { stackPRCommand } from './commands/stack/pr.js';
+
+// Worktree commands (secondary)
+import { listCommand } from './commands/list.js';
+import { addCommand } from './commands/add.js';
+import { removeCommand } from './commands/remove.js';
+import { pruneCommand } from './commands/prune.js';
+
+// Legacy PR command
 import { prCommand } from './commands/pr.js';
 
-interface GlobalOptions {
-  help?: boolean;
-  version?: boolean;
-}
-
 export async function runCLI(args: string[]): Promise<void> {
-  // Parse command and arguments
   const [command, ...rest] = args;
 
-  // Show help if no command or --help flag
+  // Show help if no command
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     showHelp();
     return;
@@ -40,31 +40,45 @@ export async function runCLI(args: string[]): Promise<void> {
 
   try {
     switch (command) {
+      // === Stack commands (primary) ===
+      
       case 'list':
       case 'ls':
+        // Default: show stacks
         await handleListCommand(rest);
         break;
 
-      case 'add':
+      case 'init':
+        await handleInitCommand(rest);
+        break;
+
       case 'new':
-        await handleAddCommand(rest);
+      case 'branch':
+        await handleNewCommand(rest);
         break;
 
-      case 'remove':
-      case 'rm':
-        await handleRemoveCommand(rest);
+      case 'status':
+      case 'st':
+        await handleStatusCommand(rest);
         break;
 
-      case 'prune':
-        await handlePruneCommand(rest);
+      case 'sync':
+        await handleSyncCommand(rest);
         break;
 
-      case 'stack':
-        await handleStackCommand(rest);
+      case 'restack':
+        await handleRestackCommand(rest);
         break;
 
       case 'pr':
         await handlePRCommand(rest);
+        break;
+
+      // === Worktree commands (secondary) ===
+      
+      case 'wt':
+      case 'worktree':
+        await handleWorktreeCommand(rest);
         break;
 
       default:
@@ -79,7 +93,251 @@ export async function runCLI(args: string[]): Promise<void> {
   }
 }
 
+// === Stack Command Handlers ===
+
 async function handleListCommand(args: string[]): Promise<void> {
+  const options: { verbose?: boolean; all?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-v':
+      case '--verbose':
+        options.verbose = true;
+        break;
+      case '-a':
+      case '--all':
+        options.all = true;
+        break;
+      case '-h':
+      case '--help':
+        showListHelp();
+        return;
+    }
+  }
+
+  await stackCommand(options);
+}
+
+async function handleInitCommand(args: string[]): Promise<void> {
+  const options: { trunk?: string; name?: string } = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    switch (arg) {
+      case '-t':
+      case '--trunk':
+        options.trunk = args[++i];
+        break;
+      case '-n':
+      case '--name':
+        options.name = args[++i];
+        break;
+      case '-h':
+      case '--help':
+        showInitHelp();
+        return;
+      default:
+        if (!options.trunk && !arg.startsWith('-')) {
+          options.trunk = arg;
+        } else {
+          clack.log.error(`Unexpected argument: ${arg}`);
+          process.exit(1);
+        }
+    }
+  }
+
+  if (!options.trunk) {
+    clack.log.error('Trunk branch is required');
+    showInitHelp();
+    process.exit(1);
+  }
+
+  await stackInitCommand({ trunk: options.trunk, name: options.name });
+}
+
+async function handleNewCommand(args: string[]): Promise<void> {
+  const options: { worktree?: boolean; path?: string } = {};
+  let branchName = '';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    switch (arg) {
+      case '-w':
+      case '--worktree':
+        options.worktree = true;
+        break;
+      case '-p':
+      case '--path':
+        options.path = args[++i];
+        options.worktree = true;
+        break;
+      case '-h':
+      case '--help':
+        showNewHelp();
+        return;
+      default:
+        if (!branchName && !arg.startsWith('-')) {
+          branchName = arg;
+        } else {
+          clack.log.error(`Unexpected argument: ${arg}`);
+          process.exit(1);
+        }
+    }
+  }
+
+  if (!branchName) {
+    clack.log.error('Branch name is required');
+    showNewHelp();
+    process.exit(1);
+  }
+
+  await stackBranchCommand(branchName, options);
+}
+
+async function handleStatusCommand(args: string[]): Promise<void> {
+  const options: { verbose?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-v':
+      case '--verbose':
+        options.verbose = true;
+        break;
+      case '-h':
+      case '--help':
+        showStatusHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackStatusCommand(options);
+}
+
+async function handleSyncCommand(args: string[]): Promise<void> {
+  const options: { merge?: boolean; force?: boolean; push?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-m':
+      case '--merge':
+        options.merge = true;
+        break;
+      case '-f':
+      case '--force':
+        options.force = true;
+        break;
+      case '-p':
+      case '--push':
+        options.push = true;
+        break;
+      case '-h':
+      case '--help':
+        showSyncHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackSyncCommand(options);
+}
+
+async function handleRestackCommand(args: string[]): Promise<void> {
+  const options: { force?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-f':
+      case '--force':
+        options.force = true;
+        break;
+      case '-h':
+      case '--help':
+        showRestackHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackRestackCommand(options);
+}
+
+async function handlePRCommand(args: string[]): Promise<void> {
+  const options: { yes?: boolean; link?: boolean; updateExisting?: boolean } = {};
+
+  for (const arg of args) {
+    switch (arg) {
+      case '-y':
+      case '--yes':
+        options.yes = true;
+        break;
+      case '-l':
+      case '--link':
+        options.link = true;
+        break;
+      case '-u':
+      case '--update-existing':
+        options.updateExisting = true;
+        break;
+      case '-h':
+      case '--help':
+        showPRHelp();
+        return;
+      default:
+        clack.log.error(`Unexpected argument: ${arg}`);
+        process.exit(1);
+    }
+  }
+
+  await stackPRCommand(options);
+}
+
+// === Worktree Command Handler ===
+
+async function handleWorktreeCommand(args: string[]): Promise<void> {
+  const [subcommand, ...rest] = args;
+
+  if (!subcommand || subcommand === '-h' || subcommand === '--help') {
+    showWorktreeHelp();
+    return;
+  }
+
+  switch (subcommand) {
+    case 'list':
+    case 'ls':
+      await handleWtListCommand(rest);
+      break;
+
+    case 'add':
+    case 'new':
+      await handleWtAddCommand(rest);
+      break;
+
+    case 'remove':
+    case 'rm':
+      await handleWtRemoveCommand(rest);
+      break;
+
+    case 'prune':
+      await handleWtPruneCommand(rest);
+      break;
+
+    default:
+      clack.log.error(`Unknown worktree command: ${subcommand}`);
+      showWorktreeHelp();
+      process.exit(1);
+  }
+}
+
+async function handleWtListCommand(args: string[]): Promise<void> {
   const options = {
     verbose: false,
     tree: false,
@@ -106,7 +364,7 @@ async function handleListCommand(args: string[]): Promise<void> {
         break;
       case '-h':
       case '--help':
-        showListHelp();
+        showWtListHelp();
         return;
     }
   }
@@ -114,7 +372,7 @@ async function handleListCommand(args: string[]): Promise<void> {
   await listCommand(options);
 }
 
-async function handleAddCommand(args: string[]): Promise<void> {
+async function handleWtAddCommand(args: string[]): Promise<void> {
   const options: { base?: string; path?: string; force?: boolean } = {};
   let branch = '';
 
@@ -136,7 +394,7 @@ async function handleAddCommand(args: string[]): Promise<void> {
         break;
       case '-h':
       case '--help':
-        showAddHelp();
+        showWtAddHelp();
         return;
       default:
         if (!branch) {
@@ -152,14 +410,14 @@ async function handleAddCommand(args: string[]): Promise<void> {
 
   if (!branch) {
     clack.log.error('Branch name required');
-    showAddHelp();
+    showWtAddHelp();
     process.exit(1);
   }
 
   await addCommand(branch, options);
 }
 
-async function handleRemoveCommand(args: string[]): Promise<void> {
+async function handleWtRemoveCommand(args: string[]): Promise<void> {
   const options = { force: false };
   let input = '';
 
@@ -171,7 +429,7 @@ async function handleRemoveCommand(args: string[]): Promise<void> {
         break;
       case '-h':
       case '--help':
-        showRemoveHelp();
+        showWtRemoveHelp();
         return;
       default:
         if (!input) {
@@ -185,14 +443,14 @@ async function handleRemoveCommand(args: string[]): Promise<void> {
 
   if (!input) {
     clack.log.error('Path or branch name required');
-    showRemoveHelp();
+    showWtRemoveHelp();
     process.exit(1);
   }
 
   await removeCommand(input, options);
 }
 
-async function handlePruneCommand(args: string[]): Promise<void> {
+async function handleWtPruneCommand(args: string[]): Promise<void> {
   const options = { dryRun: false, force: false };
 
   for (const arg of args) {
@@ -207,7 +465,7 @@ async function handlePruneCommand(args: string[]): Promise<void> {
         break;
       case '-h':
       case '--help':
-        showPruneHelp();
+        showWtPruneHelp();
         return;
     }
   }
@@ -215,415 +473,56 @@ async function handlePruneCommand(args: string[]): Promise<void> {
   await pruneCommand(options);
 }
 
-async function handleStackCommand(args: string[]): Promise<void> {
-  const [subcommand, ...rest] = args;
-
-  // Handle subcommands
-  switch (subcommand) {
-    case 'init':
-      await handleStackInitCommand(rest);
-      return;
-
-    case 'branch':
-      await handleStackBranchCommand(rest);
-      return;
-
-    case 'status':
-      await handleStackStatusCommand(rest);
-      return;
-
-    case 'sync':
-      await handleStackSyncCommand(rest);
-      return;
-
-    case 'restack':
-      await handleStackRestackCommand(rest);
-      return;
-
-    case 'pr':
-      await handleStackPRCommand(rest);
-      return;
-
-    case '-h':
-    case '--help':
-    case 'help':
-      showStackHelp();
-      return;
-  }
-
-  // Default behavior: show stacks
-  const options: { verbose?: boolean; all?: boolean } = {};
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-v':
-      case '--verbose':
-        options.verbose = true;
-        break;
-      case '-a':
-      case '--all':
-        options.all = true;
-        break;
-      case '-h':
-      case '--help':
-        showStackHelp();
-        return;
-    }
-  }
-
-  await stackCommand(options);
-}
-
-async function handleStackInitCommand(args: string[]): Promise<void> {
-  const options: { trunk?: string; name?: string } = {};
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    switch (arg) {
-      case '-t':
-      case '--trunk':
-        options.trunk = args[++i];
-        break;
-      case '-n':
-      case '--name':
-        options.name = args[++i];
-        break;
-      case '-h':
-      case '--help':
-        showStackInitHelp();
-        return;
-      default:
-        // First positional arg could be trunk
-        if (!options.trunk && !arg.startsWith('-')) {
-          options.trunk = arg;
-        } else {
-          clack.log.error(`Unexpected argument: ${arg}`);
-          process.exit(1);
-        }
-    }
-  }
-
-  if (!options.trunk) {
-    clack.log.error('Trunk branch is required');
-    showStackInitHelp();
-    process.exit(1);
-  }
-
-  await stackInitCommand({ trunk: options.trunk, name: options.name });
-}
-
-async function handleStackBranchCommand(args: string[]): Promise<void> {
-  const options: { worktree?: boolean; path?: string } = {};
-  let branchName = '';
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    switch (arg) {
-      case '-w':
-      case '--worktree':
-        options.worktree = true;
-        break;
-      case '-p':
-      case '--path':
-        options.path = args[++i];
-        options.worktree = true;
-        break;
-      case '-h':
-      case '--help':
-        showStackBranchHelp();
-        return;
-      default:
-        if (!branchName && !arg.startsWith('-')) {
-          branchName = arg;
-        } else {
-          clack.log.error(`Unexpected argument: ${arg}`);
-          process.exit(1);
-        }
-    }
-  }
-
-  if (!branchName) {
-    clack.log.error('Branch name is required');
-    showStackBranchHelp();
-    process.exit(1);
-  }
-
-  await stackBranchCommand(branchName, options);
-}
-
-async function handleStackStatusCommand(args: string[]): Promise<void> {
-  const options: { verbose?: boolean } = {};
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-v':
-      case '--verbose':
-        options.verbose = true;
-        break;
-      case '-h':
-      case '--help':
-        showStackStatusHelp();
-        return;
-      default:
-        clack.log.error(`Unexpected argument: ${arg}`);
-        process.exit(1);
-    }
-  }
-
-  await stackStatusCommand(options);
-}
-
-async function handleStackSyncCommand(args: string[]): Promise<void> {
-  const options: { merge?: boolean; force?: boolean; push?: boolean } = {};
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-m':
-      case '--merge':
-        options.merge = true;
-        break;
-      case '-f':
-      case '--force':
-        options.force = true;
-        break;
-      case '-p':
-      case '--push':
-        options.push = true;
-        break;
-      case '-h':
-      case '--help':
-        showStackSyncHelp();
-        return;
-      default:
-        clack.log.error(`Unexpected argument: ${arg}`);
-        process.exit(1);
-    }
-  }
-
-  await stackSyncCommand(options);
-}
-
-async function handleStackRestackCommand(args: string[]): Promise<void> {
-  const options: { force?: boolean } = {};
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-f':
-      case '--force':
-        options.force = true;
-        break;
-      case '-h':
-      case '--help':
-        showStackRestackHelp();
-        return;
-      default:
-        clack.log.error(`Unexpected argument: ${arg}`);
-        process.exit(1);
-    }
-  }
-
-  await stackRestackCommand(options);
-}
-
-async function handleStackPRCommand(args: string[]): Promise<void> {
-  const options: { yes?: boolean; link?: boolean; updateExisting?: boolean } = {};
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-y':
-      case '--yes':
-        options.yes = true;
-        break;
-      case '-l':
-      case '--link':
-        options.link = true;
-        break;
-      case '-u':
-      case '--update-existing':
-        options.updateExisting = true;
-        break;
-      case '-h':
-      case '--help':
-        showStackPRHelp();
-        return;
-      default:
-        clack.log.error(`Unexpected argument: ${arg}`);
-        process.exit(1);
-    }
-  }
-
-  await stackPRCommand(options);
-}
-
-async function handlePRCommand(args: string[]): Promise<void> {
-  const options: { yes?: boolean; title?: string; description?: string } = {};
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    switch (arg) {
-      case '-y':
-      case '--yes':
-        options.yes = true;
-        break;
-      case '-t':
-      case '--title':
-        options.title = args[++i];
-        break;
-      case '-d':
-      case '--description':
-        options.description = args[++i];
-        break;
-      case '-h':
-      case '--help':
-        showPRHelp();
-        return;
-      default:
-        clack.log.error(`Unexpected argument: ${arg}`);
-        process.exit(1);
-    }
-  }
-
-  await prCommand(options);
-}
+// === Help Functions ===
 
 function showVersion(): void {
-  console.log('worktree v0.1.0');
+  console.log('stacks v0.1.0');
 }
 
 function showHelp(): void {
   console.log(`
-${pc.bold('worktree')} - Modern git worktree management with stack visualization
+${pc.bold('stacks')} - Manage stacked diffs with git
 
 ${pc.bold('Usage:')}
-  worktree <command> [options]
+  stacks <command> [options]
 
-${pc.bold('Commands:')}
-  ${pc.cyan('list, ls')}           Show worktrees with stack visualization
-  ${pc.cyan('add, new')}           Add a new worktree
-  ${pc.cyan('remove, rm')}         Remove a worktree
-  ${pc.cyan('prune')}              Clean up stale worktree references
-  ${pc.cyan('stack')}              Display full stack visualization
+${pc.bold('Stack Commands:')}
+  ${pc.cyan('list, ls')}           Show all stacks
+  ${pc.cyan('init')}               Initialize a new stack from current branch
+  ${pc.cyan('new, branch')}        Create a child branch in the current stack
+  ${pc.cyan('status, st')}         Show sync status for stack branches
+  ${pc.cyan('sync')}               Sync branches with their parents
+  ${pc.cyan('restack')}            Re-record base commits after manual operations
   ${pc.cyan('pr')}                 Create GitHub PRs for stack branches
+
+${pc.bold('Worktree Commands:')}
+  ${pc.cyan('wt list')}            Show worktrees
+  ${pc.cyan('wt add')}             Add a new worktree
+  ${pc.cyan('wt remove')}          Remove a worktree
+  ${pc.cyan('wt prune')}           Clean up stale worktree references
 
 ${pc.bold('Options:')}
   -h, --help           Show help
   -v, --version        Show version
 
 ${pc.bold('Examples:')}
-  worktree list --tree              # Show worktrees in tree view
-  worktree add feature/login        # Add worktree for branch
-  worktree add -b main feat/new     # Create new branch from main
-  worktree remove feature/login     # Remove worktree by branch name
-  worktree stack                    # Show all branch relationships
-  worktree pr                       # Create PRs interactively
-  worktree pr -y                    # Create PRs for all descendants
+  stacks init main                  # Start a stack targeting main
+  stacks new feature/login          # Create child branch
+  stacks status                     # Check which branches need sync
+  stacks sync                       # Rebase branches onto parents
+  stacks pr --link                  # Create PRs with navigation
 
-${pc.dim('Run')} ${pc.cyan('worktree <command> --help')} ${pc.dim('for more information on a command.')}
+${pc.dim('Run')} ${pc.cyan('stacks <command> --help')} ${pc.dim('for more information on a command.')}
 `);
 }
 
 function showListHelp(): void {
   console.log(`
-${pc.bold('worktree list')} - Show worktrees with stack visualization
+${pc.bold('stacks list')} - Show all stacks
 
 ${pc.bold('Usage:')}
-  worktree list [options]
-
-${pc.bold('Options:')}
-  -t, --tree           Show tree view with branch relationships
-  -v, --verbose        Show detailed information
-  -s, --simple         Show simple git output
-  --no-stack           List worktrees without stack detection (faster)
-  -h, --help           Show help
-
-${pc.bold('Examples:')}
-  worktree list                    # List all worktrees
-  worktree list --tree             # Show tree view
-  worktree list --tree --verbose   # Tree view with details
-  worktree list --no-stack         # Fast listing without stack detection
-`);
-}
-
-function showAddHelp(): void {
-  console.log(`
-${pc.bold('worktree add')} - Add a new worktree
-
-${pc.bold('Usage:')}
-  worktree add <branch> [path] [options]
-
-${pc.bold('Arguments:')}
-  branch               Branch name (required)
-  path                 Target path (optional, defaults to ../<repo>-<branch>)
-
-${pc.bold('Options:')}
-  -b, --base <branch>  Base branch for new branch
-  -p, --path <path>    Target path (alternative to positional arg)
-  -f, --force          Skip confirmation prompt
-  -h, --help           Show help
-
-${pc.bold('Examples:')}
-  worktree add feature/login                   # Add existing branch
-  worktree add -b main feature/new             # Create new branch
-  worktree add feature/test ../other-path      # Custom path
-`);
-}
-
-function showRemoveHelp(): void {
-  console.log(`
-${pc.bold('worktree remove')} - Remove a worktree
-
-${pc.bold('Usage:')}
-  worktree remove <path|branch> [options]
-
-${pc.bold('Arguments:')}
-  path|branch          Worktree path or branch name (required)
-
-${pc.bold('Options:')}
-  -f, --force          Force removal (even with uncommitted changes)
-  -h, --help           Show help
-
-${pc.bold('Examples:')}
-  worktree remove feature/login              # Remove by branch name
-  worktree remove ../repo-feature-login      # Remove by path
-`);
-}
-
-function showPruneHelp(): void {
-  console.log(`
-${pc.bold('worktree prune')} - Clean up stale worktree references
-
-${pc.bold('Usage:')}
-  worktree prune [options]
-
-${pc.bold('Options:')}
-  -n, --dry-run        Show what would be pruned
-  -f, --force          Skip confirmation prompt
-  -h, --help           Show help
-
-${pc.bold('Examples:')}
-  worktree prune --dry-run         # Show what would be pruned
-  worktree prune                   # Prune with confirmation
-`);
-}
-
-function showStackHelp(): void {
-  console.log(`
-${pc.bold('worktree stack')} - Manage stacked diffs
-
-${pc.bold('Usage:')}
-  worktree stack [subcommand] [options]
-
-${pc.bold('Subcommands:')}
-  ${pc.cyan('init')}               Initialize a new stack from current branch
-  ${pc.cyan('branch')}             Create a child branch in the current stack
-  ${pc.cyan('status')}             Show sync status for stack branches
-  ${pc.cyan('sync')}               Sync branches with their parents
-  ${pc.cyan('restack')}            Re-record base commits after manual operations
-  ${pc.cyan('pr')}                 Create GitHub PRs for stack branches
-  ${pc.dim('(no subcommand)')}   Show managed stacks
+  stacks list [options]
+  stacks ls [options]
 
 ${pc.bold('Options:')}
   -a, --all            Also show detected (non-managed) stacks
@@ -631,51 +530,45 @@ ${pc.bold('Options:')}
   -h, --help           Show help
 
 ${pc.bold('Examples:')}
-  worktree stack                        # Show managed stacks
-  worktree stack --all                  # Include detected stacks
-  worktree stack init --trunk main      # Start a new stack
-  worktree stack branch feature/login   # Create child branch
-  worktree stack status                 # Check sync status
-  worktree stack sync                   # Sync all branches
-
-${pc.dim('Run')} ${pc.cyan('worktree stack <subcommand> --help')} ${pc.dim('for more information.')}
+  stacks list                       # Show managed stacks
+  stacks ls --all                   # Include detected stacks
 `);
 }
 
-function showStackInitHelp(): void {
+function showInitHelp(): void {
   console.log(`
-${pc.bold('worktree stack init')} - Initialize a new stack from current branch
+${pc.bold('stacks init')} - Initialize a new stack from current branch
 
 ${pc.bold('Usage:')}
-  worktree stack init --trunk <branch> [options]
-  worktree stack init <trunk> [options]
+  stacks init <trunk> [options]
+  stacks init --trunk <branch> [options]
 
 ${pc.bold('Arguments:')}
-  trunk                Target branch the stack will eventually merge into
+  trunk                Target branch the stack will merge into
 
 ${pc.bold('Options:')}
   -t, --trunk <branch>   Trunk branch (required)
-  -n, --name <name>      Stack name (auto-generated from branch if not provided)
+  -n, --name <name>      Stack name (auto-generated if not provided)
   -h, --help             Show help
 
 ${pc.bold('What this does:')}
-  1. Marks the current branch as the root of a new stack
+  1. Marks current branch as the root of a new stack
   2. Records the trunk branch for PR targeting
   3. Tracks the current commit for sync detection
 
 ${pc.bold('Examples:')}
-  worktree stack init --trunk main              # Initialize stack targeting main
-  worktree stack init main                      # Same, positional argument
-  worktree stack init -t develop -n my-feature  # Custom stack name
+  stacks init main                  # Initialize stack targeting main
+  stacks init -t develop -n auth    # Custom stack name
 `);
 }
 
-function showStackBranchHelp(): void {
+function showNewHelp(): void {
   console.log(`
-${pc.bold('worktree stack branch')} - Create a child branch in the current stack
+${pc.bold('stacks new')} - Create a child branch in the current stack
 
 ${pc.bold('Usage:')}
-  worktree stack branch <name> [options]
+  stacks new <name> [options]
+  stacks branch <name> [options]
 
 ${pc.bold('Arguments:')}
   name                 Name for the new branch (required)
@@ -687,22 +580,22 @@ ${pc.bold('Options:')}
 
 ${pc.bold('What this does:')}
   1. Creates a new branch from current HEAD
-  2. Records parent branch and base commit for sync detection
-  3. Optionally creates a worktree for parallel work
+  2. Records parent branch for sync detection
+  3. Optionally creates a worktree
 
 ${pc.bold('Examples:')}
-  worktree stack branch feature/login            # Create child branch
-  worktree stack branch feature/oauth -w         # With worktree
-  worktree stack branch fix/bug -p ../fix-bug    # Custom worktree path
+  stacks new feature/login          # Create child branch
+  stacks new feature/oauth -w       # With worktree
 `);
 }
 
-function showStackStatusHelp(): void {
+function showStatusHelp(): void {
   console.log(`
-${pc.bold('worktree stack status')} - Show sync status for stack branches
+${pc.bold('stacks status')} - Show sync status for stack branches
 
 ${pc.bold('Usage:')}
-  worktree stack status [options]
+  stacks status [options]
+  stacks st [options]
 
 ${pc.bold('Options:')}
   -v, --verbose        Show detailed status information
@@ -710,22 +603,22 @@ ${pc.bold('Options:')}
 
 ${pc.bold('Status indicators:')}
   ${pc.green('✓')}                  Branch is synced with parent
-  ${pc.yellow('⚠ +N commits')}      Parent has N new commits, needs sync
+  ${pc.yellow('⚠ +N commits')}      Parent has N new commits
   ${pc.red('⚠ diverged')}        Branch has diverged from parent
   ${pc.red('✗')}                  Error checking status
 
 ${pc.bold('Examples:')}
-  worktree stack status              # Show sync status
-  worktree stack status -v           # With verbose details
+  stacks status                     # Show sync status
+  stacks st -v                      # Verbose details
 `);
 }
 
-function showStackSyncHelp(): void {
+function showSyncHelp(): void {
   console.log(`
-${pc.bold('worktree stack sync')} - Sync branches with their parents
+${pc.bold('stacks sync')} - Sync branches with their parents
 
 ${pc.bold('Usage:')}
-  worktree stack sync [options]
+  stacks sync [options]
 
 ${pc.bold('Options:')}
   -m, --merge          Use merge instead of rebase
@@ -735,61 +628,55 @@ ${pc.bold('Options:')}
 
 ${pc.bold('Behavior:')}
   1. Fetches latest from remote
-  2. For each branch that needs sync (in order):
-     - Rebase (default) or merge onto parent
-     - Update tracking commit
-  3. If conflict: stops and shows resolution steps
+  2. Rebases (or merges) each branch onto its parent
+  3. Stops on conflict with resolution instructions
 
 ${pc.bold('Examples:')}
-  worktree stack sync                # Rebase mode (default)
-  worktree stack sync --merge        # Merge mode
-  worktree stack sync --push         # Push after syncing
+  stacks sync                       # Rebase mode (default)
+  stacks sync --merge               # Merge mode
+  stacks sync --push                # Push after syncing
 `);
 }
 
-function showStackRestackHelp(): void {
+function showRestackHelp(): void {
   console.log(`
-${pc.bold('worktree stack restack')} - Re-record base commits after manual operations
+${pc.bold('stacks restack')} - Re-record base commits after manual operations
 
 ${pc.bold('Usage:')}
-  worktree stack restack [options]
+  stacks restack [options]
 
 ${pc.bold('Options:')}
   -f, --force          Skip confirmation prompt
   -h, --help           Show help
 
 ${pc.bold('When to use:')}
-  After manual git operations that change branch relationships:
+  After manual git operations:
   - Manual rebases
   - Force pushes
   - Interactive rebases
   - Cherry-picks
 
-${pc.bold('What it does:')}
-  Updates the recorded base commit for each branch to match
-  the current HEAD of its parent branch.
-
 ${pc.bold('Examples:')}
-  worktree stack restack             # Interactive mode
-  worktree stack restack --force     # Skip confirmation
+  stacks restack                    # Interactive mode
+  stacks restack --force            # Skip confirmation
 `);
 }
 
-function showStackPRHelp(): void {
+function showPRHelp(): void {
   console.log(`
-${pc.bold('worktree stack pr')} - Create GitHub PRs for stack branches
+${pc.bold('stacks pr')} - Create GitHub PRs for stack branches
 
 ${pc.bold('Usage:')}
-  worktree stack pr [options]
+  stacks pr [options]
 
 ${pc.bold('Options:')}
-  -y, --yes              Headless mode (create all PRs automatically)
+  -y, --yes              Headless mode (create all PRs)
   -l, --link             Add stack navigation to PR descriptions
-  -u, --update-existing  Update existing PRs with navigation (use with --link)
+  -u, --update-existing  Update existing PRs with navigation
   -h, --help             Show help
 
 ${pc.bold('Stack navigation:')}
-  When using --link, PRs will include a navigation table:
+  When using --link, PRs include a navigation table:
   
   | | Branch | PR |
   |---|--------|-----|
@@ -798,46 +685,88 @@ ${pc.bold('Stack navigation:')}
   | ⬇️ | child-branch | #103 |
 
 ${pc.bold('Examples:')}
-  worktree stack pr                      # Interactive mode
-  worktree stack pr -y                   # Create all PRs automatically
-  worktree stack pr -y --link            # With stack navigation
-  worktree stack pr --link -u            # Update existing PRs with navigation
+  stacks pr                         # Interactive mode
+  stacks pr -y --link               # Create all with navigation
+  stacks pr --link -u               # Update existing PRs
 `);
 }
 
-function showPRHelp(): void {
+function showWorktreeHelp(): void {
   console.log(`
-${pc.bold('worktree pr')} - Create GitHub PRs for stack branches
+${pc.bold('stacks wt')} - Manage git worktrees
 
 ${pc.bold('Usage:')}
-  worktree pr [options]
+  stacks wt <command> [options]
 
-${pc.bold('Options:')}
-  -y, --yes                    Headless mode (no prompts)
-  -t, --title <template>       PR title template (use {branch} as placeholder)
-  -d, --description <text>     PR description
-  -h, --help                   Show help
-
-${pc.bold('Behavior:')}
-  Interactive mode (default):
-    - Select which branches to create PRs for
-    - Customize title and description for each PR
-    - Confirm before creating each PR
-
-  Headless mode (--yes):
-    - Automatically creates PRs for current branch and all descendants
-    - Uses auto-generated titles from branch names
-    - Skips branches that already have PRs or aren't pushed
-
-${pc.bold('Authentication:')}
-  Uses GitHub CLI (gh) if available, otherwise prompts for token.
-  You can also set GITHUB_TOKEN or GH_TOKEN environment variable.
+${pc.bold('Commands:')}
+  ${pc.cyan('list, ls')}           Show worktrees
+  ${pc.cyan('add, new')}           Add a new worktree
+  ${pc.cyan('remove, rm')}         Remove a worktree
+  ${pc.cyan('prune')}              Clean up stale worktree references
 
 ${pc.bold('Examples:')}
-  worktree pr                                  # Interactive mode
-  worktree pr -y                               # Create PRs for all descendants
-  worktree pr -y -t "feat: {branch}"           # Custom title template
-  worktree pr -y -d "Auto-generated PR"        # Custom description
+  stacks wt list                    # Show worktrees
+  stacks wt add feature/test        # Add worktree
+  stacks wt remove feature/test     # Remove worktree
+
+${pc.dim('Run')} ${pc.cyan('stacks wt <command> --help')} ${pc.dim('for more information.')}
 `);
 }
 
+function showWtListHelp(): void {
+  console.log(`
+${pc.bold('stacks wt list')} - Show worktrees
+
+${pc.bold('Usage:')}
+  stacks wt list [options]
+
+${pc.bold('Options:')}
+  -t, --tree           Show tree view with branch relationships
+  -v, --verbose        Show detailed information
+  -s, --simple         Show simple git output
+  --no-stack           Skip stack detection (faster)
+  -h, --help           Show help
+`);
+}
+
+function showWtAddHelp(): void {
+  console.log(`
+${pc.bold('stacks wt add')} - Add a new worktree
+
+${pc.bold('Usage:')}
+  stacks wt add <branch> [path] [options]
+
+${pc.bold('Options:')}
+  -b, --base <branch>  Base branch for new branch
+  -p, --path <path>    Target path
+  -f, --force          Skip confirmation
+  -h, --help           Show help
+`);
+}
+
+function showWtRemoveHelp(): void {
+  console.log(`
+${pc.bold('stacks wt remove')} - Remove a worktree
+
+${pc.bold('Usage:')}
+  stacks wt remove <path|branch> [options]
+
+${pc.bold('Options:')}
+  -f, --force          Force removal
+  -h, --help           Show help
+`);
+}
+
+function showWtPruneHelp(): void {
+  console.log(`
+${pc.bold('stacks wt prune')} - Clean up stale worktree references
+
+${pc.bold('Usage:')}
+  stacks wt prune [options]
+
+${pc.bold('Options:')}
+  -n, --dry-run        Show what would be pruned
+  -f, --force          Skip confirmation
+  -h, --help           Show help
+`);
+}

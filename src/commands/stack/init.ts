@@ -55,8 +55,8 @@ export async function stackInitCommand(options: StackInitOptions): Promise<void>
   console.log('  ' + pc.dim('Base commit:') + '  ' + pc.dim(await getShortCommit(repo.root)));
   console.log('');
   console.log(pc.dim('Next steps:'));
-  console.log(`  ${pc.dim('•')} Create child branches with: ${pc.cyan(`worktree stack branch ${pc.dim('<name>')}`)}`);
-  console.log(`  ${pc.dim('•')} View stack with: ${pc.cyan('worktree stack')}`);
+  console.log(`  ${pc.dim('•')} Create child branches with: ${pc.cyan(`stacks new ${pc.dim('<name>')}`)}`);
+  console.log(`  ${pc.dim('•')} View stack with: ${pc.cyan('stacks list')}`);
   console.log('');
 }
 

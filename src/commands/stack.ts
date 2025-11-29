@@ -100,7 +100,7 @@ export async function stackCommand(options: StackOptions = {}): Promise<void> {
           console.log('');
           console.log(pc.bold(pc.dim(`Detected Stacks (${detectedStacks.size}):`)));
           console.log(pc.dim('These are branch relationships detected from git history.'));
-          console.log(pc.dim(`Use ${pc.cyan('worktree stack init')} to manage them explicitly.`));
+          console.log(pc.dim(`Use ${pc.cyan('stacks init')} to manage them explicitly.`));
           console.log('');
         }
 
@@ -129,10 +129,10 @@ export async function stackCommand(options: StackOptions = {}): Promise<void> {
       console.log('');
       console.log(pc.dim('To create a stack:'));
       console.log(`  1. Checkout your feature branch`);
-      console.log(`  2. Run ${pc.cyan('worktree stack init --trunk main')}`);
-      console.log(`  3. Create child branches with ${pc.cyan('worktree stack branch <name>')}`);
+      console.log(`  2. Run ${pc.cyan('stacks init main')}`);
+      console.log(`  3. Create child branches with ${pc.cyan('stacks new <name>')}`);
       console.log('');
-      console.log(pc.dim(`Use ${pc.cyan('worktree stack --all')} to see detected branch relationships.`));
+      console.log(pc.dim(`Use ${pc.cyan('stacks list --all')} to see detected branch relationships.`));
     }
 
     console.log('');

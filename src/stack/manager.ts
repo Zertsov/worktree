@@ -43,9 +43,9 @@ export interface StackInfo {
  * Stores metadata in git config with the following structure:
  *
  * Stack config:
- *   worktree.stack.<name>.trunk = "main"
- *   worktree.stack.<name>.root = "feature/auth"
- *   worktree.stack.<name>.created = "2024-01-15T10:30:00Z"
+ *   stacks.<name>.trunk = "main"
+ *   stacks.<name>.root = "feature/auth"
+ *   stacks.<name>.created = "2024-01-15T10:30:00Z"
  *
  * Branch config:
  *   branch.<name>.stackname = "mystack"
@@ -91,19 +91,19 @@ export class StackManager {
 
     // Store stack metadata
     const stackConfigResult = await this.setGitConfig(
-      `worktree.stack.${stackName}.trunk`,
+      `stacks.${stackName}.trunk`,
       trunk
     );
     if (stackConfigResult.isErr()) return stackConfigResult;
 
     const rootConfigResult = await this.setGitConfig(
-      `worktree.stack.${stackName}.root`,
+      `stacks.${stackName}.root`,
       rootBranch
     );
     if (rootConfigResult.isErr()) return rootConfigResult;
 
     const createdConfigResult = await this.setGitConfig(
-      `worktree.stack.${stackName}.created`,
+      `stacks.${stackName}.created`,
       createdAt
     );
     if (createdConfigResult.isErr()) return createdConfigResult;
@@ -178,17 +178,17 @@ export class StackManager {
    * Get stack metadata by name
    */
   async getStackMetadata(stackName: string): Promise<StackResult<StackMetadata>> {
-    const trunk = await this.getGitConfig(`worktree.stack.${stackName}.trunk`);
+    const trunk = await this.getGitConfig(`stacks.${stackName}.trunk`);
     if (trunk.isErr() || !trunk.value) {
       return StackErrors.stackNotFound(stackName);
     }
 
-    const root = await this.getGitConfig(`worktree.stack.${stackName}.root`);
+    const root = await this.getGitConfig(`stacks.${stackName}.root`);
     if (root.isErr() || !root.value) {
       return StackErrors.stackNotFound(stackName);
     }
 
-    const createdAt = await this.getGitConfig(`worktree.stack.${stackName}.created`);
+    const createdAt = await this.getGitConfig(`stacks.${stackName}.created`);
 
     return stackOk({
       name: stackName,
@@ -226,7 +226,7 @@ export class StackManager {
    */
   async getAllStacks(): Promise<StackResult<StackMetadata[]>> {
     const result = await GitOperations.exec(
-      ['config', '--get-regexp', '^worktree\\.stack\\..*\\.trunk$'],
+      ['config', '--get-regexp', '^stacks\\..*\\.trunk$'],
       this.repoRoot
     );
 
@@ -239,8 +239,8 @@ export class StackManager {
     const lines = result.stdout.trim().split('\n').filter(Boolean);
 
     for (const line of lines) {
-      // Format: worktree.stack.<name>.trunk <value>
-      const match = line.match(/^worktree\.stack\.([^.]+)\.trunk\s+(.+)$/);
+      // Format: stacks.<name>.trunk <value>
+      const match = line.match(/^stacks\.([^.]+)\.trunk\s+(.+)$/);
       if (match) {
         const [, name] = match;
         const metadata = await this.getStackMetadata(name);
@@ -326,13 +326,13 @@ export class StackManager {
     }
 
     // Remove stack metadata
-    const unsetTrunk = await this.unsetGitConfig(`worktree.stack.${stackName}.trunk`);
+    const unsetTrunk = await this.unsetGitConfig(`stacks.${stackName}.trunk`);
     if (unsetTrunk.isErr()) return unsetTrunk;
 
-    const unsetRoot = await this.unsetGitConfig(`worktree.stack.${stackName}.root`);
+    const unsetRoot = await this.unsetGitConfig(`stacks.${stackName}.root`);
     if (unsetRoot.isErr()) return unsetRoot;
 
-    const unsetCreated = await this.unsetGitConfig(`worktree.stack.${stackName}.created`);
+    const unsetCreated = await this.unsetGitConfig(`stacks.${stackName}.created`);
     if (unsetCreated.isErr()) return unsetCreated;
 
     return stackOk(undefined);
