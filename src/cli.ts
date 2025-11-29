@@ -9,6 +9,7 @@ import { addCommand } from './commands/add.js';
 import { removeCommand } from './commands/remove.js';
 import { pruneCommand } from './commands/prune.js';
 import { stackCommand } from './commands/stack.js';
+import { stackInitCommand } from './commands/stack/init.js';
 import { prCommand } from './commands/pr.js';
 
 interface GlobalOptions {
@@ -210,6 +211,22 @@ async function handlePruneCommand(args: string[]): Promise<void> {
 }
 
 async function handleStackCommand(args: string[]): Promise<void> {
+  const [subcommand, ...rest] = args;
+
+  // Handle subcommands
+  switch (subcommand) {
+    case 'init':
+      await handleStackInitCommand(rest);
+      return;
+
+    case '-h':
+    case '--help':
+    case 'help':
+      showStackHelp();
+      return;
+  }
+
+  // Default behavior: show stacks (existing functionality)
   const options = { verbose: false };
 
   for (const arg of args) {
@@ -226,6 +243,45 @@ async function handleStackCommand(args: string[]): Promise<void> {
   }
 
   await stackCommand(options);
+}
+
+async function handleStackInitCommand(args: string[]): Promise<void> {
+  const options: { trunk?: string; name?: string } = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    switch (arg) {
+      case '-t':
+      case '--trunk':
+        options.trunk = args[++i];
+        break;
+      case '-n':
+      case '--name':
+        options.name = args[++i];
+        break;
+      case '-h':
+      case '--help':
+        showStackInitHelp();
+        return;
+      default:
+        // First positional arg could be trunk
+        if (!options.trunk && !arg.startsWith('-')) {
+          options.trunk = arg;
+        } else {
+          clack.log.error(`Unexpected argument: ${arg}`);
+          process.exit(1);
+        }
+    }
+  }
+
+  if (!options.trunk) {
+    clack.log.error('Trunk branch is required');
+    showStackInitHelp();
+    process.exit(1);
+  }
+
+  await stackInitCommand({ trunk: options.trunk, name: options.name });
 }
 
 async function handlePRCommand(args: string[]): Promise<void> {
@@ -382,18 +438,58 @@ ${pc.bold('Examples:')}
 
 function showStackHelp(): void {
   console.log(`
-${pc.bold('worktree stack')} - Display full stack visualization
+${pc.bold('worktree stack')} - Manage stacked diffs
 
 ${pc.bold('Usage:')}
-  worktree stack [options]
+  worktree stack [subcommand] [options]
+
+${pc.bold('Subcommands:')}
+  ${pc.cyan('init')}               Initialize a new stack from current branch
+  ${pc.cyan('branch')}             Create a child branch in the current stack
+  ${pc.cyan('status')}             Show sync status for stack branches
+  ${pc.cyan('sync')}               Sync branches with their parents
+  ${pc.dim('(no subcommand)')}   Show all stacks
 
 ${pc.bold('Options:')}
   -v, --verbose        Show detailed information
   -h, --help           Show help
 
 ${pc.bold('Examples:')}
-  worktree stack                   # Show all stacks
-  worktree stack --verbose         # Show with paths
+  worktree stack                        # Show all stacks
+  worktree stack init --trunk main      # Start a new stack
+  worktree stack branch feature/login   # Create child branch
+  worktree stack status                 # Check sync status
+  worktree stack sync                   # Sync all branches
+
+${pc.dim('Run')} ${pc.cyan('worktree stack <subcommand> --help')} ${pc.dim('for more information.')}
+`);
+}
+
+function showStackInitHelp(): void {
+  console.log(`
+${pc.bold('worktree stack init')} - Initialize a new stack from current branch
+
+${pc.bold('Usage:')}
+  worktree stack init --trunk <branch> [options]
+  worktree stack init <trunk> [options]
+
+${pc.bold('Arguments:')}
+  trunk                Target branch the stack will eventually merge into
+
+${pc.bold('Options:')}
+  -t, --trunk <branch>   Trunk branch (required)
+  -n, --name <name>      Stack name (auto-generated from branch if not provided)
+  -h, --help             Show help
+
+${pc.bold('What this does:')}
+  1. Marks the current branch as the root of a new stack
+  2. Records the trunk branch for PR targeting
+  3. Tracks the current commit for sync detection
+
+${pc.bold('Examples:')}
+  worktree stack init --trunk main              # Initialize stack targeting main
+  worktree stack init main                      # Same, positional argument
+  worktree stack init -t develop -n my-feature  # Custom stack name
 `);
 }
 
