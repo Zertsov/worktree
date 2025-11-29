@@ -231,14 +231,18 @@ async function handleStackCommand(args: string[]): Promise<void> {
       return;
   }
 
-  // Default behavior: show stacks (existing functionality)
-  const options = { verbose: false };
+  // Default behavior: show stacks
+  const options: { verbose?: boolean; all?: boolean } = {};
 
   for (const arg of args) {
     switch (arg) {
       case '-v':
       case '--verbose':
         options.verbose = true;
+        break;
+      case '-a':
+      case '--all':
+        options.all = true;
         break;
       case '-h':
       case '--help':
@@ -493,14 +497,16 @@ ${pc.bold('Subcommands:')}
   ${pc.cyan('branch')}             Create a child branch in the current stack
   ${pc.cyan('status')}             Show sync status for stack branches
   ${pc.cyan('sync')}               Sync branches with their parents
-  ${pc.dim('(no subcommand)')}   Show all stacks
+  ${pc.dim('(no subcommand)')}   Show managed stacks
 
 ${pc.bold('Options:')}
+  -a, --all            Also show detected (non-managed) stacks
   -v, --verbose        Show detailed information
   -h, --help           Show help
 
 ${pc.bold('Examples:')}
-  worktree stack                        # Show all stacks
+  worktree stack                        # Show managed stacks
+  worktree stack --all                  # Include detected stacks
   worktree stack init --trunk main      # Start a new stack
   worktree stack branch feature/login   # Create child branch
   worktree stack status                 # Check sync status
