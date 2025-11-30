@@ -7,7 +7,7 @@
     "stacks": "./dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --format esm",
+    "build": "bun build src/index.ts --outfile dist/stacks --target bun --format esm",
     "build:prod": "bun build src/index.ts --target bun --compile --outfile dist/stacks",
     "build:macos-arm64": "bun build src/index.ts --target bun-darwin-arm64 --compile --outfile dist/stacks-macos-arm64",
     "build:macos-x64": "bun build src/index.ts --target bun-darwin-x64 --compile --outfile dist/stacks-macos-x64",

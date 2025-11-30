@@ -248,7 +248,7 @@ export class StackManager {
 
     for (const line of lines) {
       // Format: stacks.<name>.trunk <value>
-      const match = line.match(/^stacks\.([^.]+)\.trunk\s+(.+)$/);
+      const match = line.match(/^stacks\.(.+)\.trunk\s+(.+)$/);
       if (match) {
         const [, name] = match;
         const metadata = await this.getStackMetadata(name);
@@ -281,7 +281,7 @@ export class StackManager {
 
     for (const line of lines) {
       // Format: branch.<name>.stackname <value>
-      const match = line.match(/^branch\.([^.]+)\.stackname\s+(.+)$/);
+      const match = line.match(/^branch\.(.+)\.stackname\s+(.+)$/);
       if (match) {
         const [, branchName, foundStackName] = match;
         if (foundStackName === stackName) {

@@ -5,7 +5,6 @@
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 
-// Stack commands (primary)
 import { stackCommand } from './commands/stack.js';
 import { stackInitCommand } from './commands/stack/init.js';
 import { stackBranchCommand } from './commands/stack/branch.js';
@@ -13,15 +12,6 @@ import { stackStatusCommand } from './commands/stack/status.js';
 import { stackSyncCommand } from './commands/stack/sync.js';
 import { stackRestackCommand } from './commands/stack/restack.js';
 import { stackPRCommand } from './commands/stack/pr.js';
-
-// Worktree commands (secondary)
-import { listCommand } from './commands/list.js';
-import { addCommand } from './commands/add.js';
-import { removeCommand } from './commands/remove.js';
-import { pruneCommand } from './commands/prune.js';
-
-// Legacy PR command
-import { prCommand } from './commands/pr.js';
 
 export async function runCLI(args: string[]): Promise<void> {
   const [command, ...rest] = args;
@@ -72,13 +62,6 @@ export async function runCLI(args: string[]): Promise<void> {
 
       case 'pr':
         await handlePRCommand(rest);
-        break;
-
-      // === Worktree commands (secondary) ===
-      
-      case 'wt':
-      case 'worktree':
-        await handleWorktreeCommand(rest);
         break;
 
       default:
@@ -300,179 +283,6 @@ async function handlePRCommand(args: string[]): Promise<void> {
   await stackPRCommand(options);
 }
 
-// === Worktree Command Handler ===
-
-async function handleWorktreeCommand(args: string[]): Promise<void> {
-  const [subcommand, ...rest] = args;
-
-  if (!subcommand || subcommand === '-h' || subcommand === '--help') {
-    showWorktreeHelp();
-    return;
-  }
-
-  switch (subcommand) {
-    case 'list':
-    case 'ls':
-      await handleWtListCommand(rest);
-      break;
-
-    case 'add':
-    case 'new':
-      await handleWtAddCommand(rest);
-      break;
-
-    case 'remove':
-    case 'rm':
-      await handleWtRemoveCommand(rest);
-      break;
-
-    case 'prune':
-      await handleWtPruneCommand(rest);
-      break;
-
-    default:
-      clack.log.error(`Unknown worktree command: ${subcommand}`);
-      showWorktreeHelp();
-      process.exit(1);
-  }
-}
-
-async function handleWtListCommand(args: string[]): Promise<void> {
-  const options = {
-    verbose: false,
-    tree: false,
-    simple: false,
-    noStack: false,
-  };
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-v':
-      case '--verbose':
-        options.verbose = true;
-        break;
-      case '-t':
-      case '--tree':
-        options.tree = true;
-        break;
-      case '-s':
-      case '--simple':
-        options.simple = true;
-        break;
-      case '--no-stack':
-        options.noStack = true;
-        break;
-      case '-h':
-      case '--help':
-        showWtListHelp();
-        return;
-    }
-  }
-
-  await listCommand(options);
-}
-
-async function handleWtAddCommand(args: string[]): Promise<void> {
-  const options: { base?: string; path?: string; force?: boolean } = {};
-  let branch = '';
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    switch (arg) {
-      case '-b':
-      case '--base':
-        options.base = args[++i];
-        break;
-      case '-p':
-      case '--path':
-        options.path = args[++i];
-        break;
-      case '-f':
-      case '--force':
-        options.force = true;
-        break;
-      case '-h':
-      case '--help':
-        showWtAddHelp();
-        return;
-      default:
-        if (!branch) {
-          branch = arg;
-        } else if (!options.path) {
-          options.path = arg;
-        } else {
-          clack.log.error(`Unexpected argument: ${arg}`);
-          process.exit(1);
-        }
-    }
-  }
-
-  if (!branch) {
-    clack.log.error('Branch name required');
-    showWtAddHelp();
-    process.exit(1);
-  }
-
-  await addCommand(branch, options);
-}
-
-async function handleWtRemoveCommand(args: string[]): Promise<void> {
-  const options = { force: false };
-  let input = '';
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-f':
-      case '--force':
-        options.force = true;
-        break;
-      case '-h':
-      case '--help':
-        showWtRemoveHelp();
-        return;
-      default:
-        if (!input) {
-          input = arg;
-        } else {
-          clack.log.error(`Unexpected argument: ${arg}`);
-          process.exit(1);
-        }
-    }
-  }
-
-  if (!input) {
-    clack.log.error('Path or branch name required');
-    showWtRemoveHelp();
-    process.exit(1);
-  }
-
-  await removeCommand(input, options);
-}
-
-async function handleWtPruneCommand(args: string[]): Promise<void> {
-  const options = { dryRun: false, force: false };
-
-  for (const arg of args) {
-    switch (arg) {
-      case '-n':
-      case '--dry-run':
-        options.dryRun = true;
-        break;
-      case '-f':
-      case '--force':
-        options.force = true;
-        break;
-      case '-h':
-      case '--help':
-        showWtPruneHelp();
-        return;
-    }
-  }
-
-  await pruneCommand(options);
-}
-
 // === Help Functions ===
 
 function showVersion(): void {
@@ -486,7 +296,7 @@ ${pc.bold('stacks')} - Manage stacked diffs with git
 ${pc.bold('Usage:')}
   stacks <command> [options]
 
-${pc.bold('Stack Commands:')}
+${pc.bold('Commands:')}
   ${pc.cyan('list, ls')}           Show all stacks
   ${pc.cyan('init')}               Initialize a new stack from current branch
   ${pc.cyan('new, branch')}        Create a child branch in the current stack
@@ -494,12 +304,6 @@ ${pc.bold('Stack Commands:')}
   ${pc.cyan('sync')}               Sync branches with their parents
   ${pc.cyan('restack')}            Re-record base commits after manual operations
   ${pc.cyan('pr')}                 Create GitHub PRs for stack branches
-
-${pc.bold('Worktree Commands:')}
-  ${pc.cyan('wt list')}            Show worktrees
-  ${pc.cyan('wt add')}             Add a new worktree
-  ${pc.cyan('wt remove')}          Remove a worktree
-  ${pc.cyan('wt prune')}           Clean up stale worktree references
 
 ${pc.bold('Options:')}
   -h, --help           Show help
@@ -688,85 +492,5 @@ ${pc.bold('Examples:')}
   stacks pr                         # Interactive mode
   stacks pr -y --link               # Create all with navigation
   stacks pr --link -u               # Update existing PRs
-`);
-}
-
-function showWorktreeHelp(): void {
-  console.log(`
-${pc.bold('stacks wt')} - Manage git worktrees
-
-${pc.bold('Usage:')}
-  stacks wt <command> [options]
-
-${pc.bold('Commands:')}
-  ${pc.cyan('list, ls')}           Show worktrees
-  ${pc.cyan('add, new')}           Add a new worktree
-  ${pc.cyan('remove, rm')}         Remove a worktree
-  ${pc.cyan('prune')}              Clean up stale worktree references
-
-${pc.bold('Examples:')}
-  stacks wt list                    # Show worktrees
-  stacks wt add feature/test        # Add worktree
-  stacks wt remove feature/test     # Remove worktree
-
-${pc.dim('Run')} ${pc.cyan('stacks wt <command> --help')} ${pc.dim('for more information.')}
-`);
-}
-
-function showWtListHelp(): void {
-  console.log(`
-${pc.bold('stacks wt list')} - Show worktrees
-
-${pc.bold('Usage:')}
-  stacks wt list [options]
-
-${pc.bold('Options:')}
-  -t, --tree           Show tree view with branch relationships
-  -v, --verbose        Show detailed information
-  -s, --simple         Show simple git output
-  --no-stack           Skip stack detection (faster)
-  -h, --help           Show help
-`);
-}
-
-function showWtAddHelp(): void {
-  console.log(`
-${pc.bold('stacks wt add')} - Add a new worktree
-
-${pc.bold('Usage:')}
-  stacks wt add <branch> [path] [options]
-
-${pc.bold('Options:')}
-  -b, --base <branch>  Base branch for new branch
-  -p, --path <path>    Target path
-  -f, --force          Skip confirmation
-  -h, --help           Show help
-`);
-}
-
-function showWtRemoveHelp(): void {
-  console.log(`
-${pc.bold('stacks wt remove')} - Remove a worktree
-
-${pc.bold('Usage:')}
-  stacks wt remove <path|branch> [options]
-
-${pc.bold('Options:')}
-  -f, --force          Force removal
-  -h, --help           Show help
-`);
-}
-
-function showWtPruneHelp(): void {
-  console.log(`
-${pc.bold('stacks wt prune')} - Clean up stale worktree references
-
-${pc.bold('Usage:')}
-  stacks wt prune [options]
-
-${pc.bold('Options:')}
-  -n, --dry-run        Show what would be pruned
-  -f, --force          Skip confirmation
-  -h, --help           Show help
 `);
 }
