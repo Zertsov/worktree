@@ -197,13 +197,21 @@ function printStackTree(
   childrenMap: Map<string, string[]>,
   prefix: string,
   currentBranch: string | null,
-  colorFn: (text: string) => string
+  colorFn: (text: string) => string,
+  visited: Set<string> = new Set()
 ): void {
   const children = childrenMap.get(branch) || [];
   const sortedChildren = [...children].sort();
 
   for (let i = 0; i < sortedChildren.length; i++) {
     const child = sortedChildren[i];
+    
+    // Prevent infinite recursion from circular parent references
+    if (visited.has(child)) {
+      console.log(prefix + pc.red('└── ') + pc.red(`${child} (circular reference)`));
+      continue;
+    }
+    
     const isLast = i === sortedChildren.length - 1;
     const connector = isLast ? '└── ' : '├── ';
     const childPrefix = prefix + (isLast ? '    ' : '│   ');
@@ -215,6 +223,8 @@ function printStackTree(
     }
 
     console.log(prefix + colorFn(connector) + branchDisplay);
-    printStackTree(child, childrenMap, childPrefix, currentBranch, colorFn);
+    
+    visited.add(child);
+    printStackTree(child, childrenMap, childPrefix, currentBranch, colorFn, visited);
   }
 }

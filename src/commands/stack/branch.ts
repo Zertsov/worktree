@@ -168,12 +168,20 @@ function printTree(
   branch: string,
   childrenMap: Map<string, string[]>,
   prefix: string,
-  highlight: string
+  highlight: string,
+  visited: Set<string> = new Set()
 ): void {
   const children = childrenMap.get(branch) || [];
 
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
+    
+    // Prevent infinite recursion from circular parent references
+    if (visited.has(child)) {
+      console.log(prefix + pc.red('└── ') + pc.red(`${child} (circular reference)`));
+      continue;
+    }
+    
     const isLast = i === children.length - 1;
     const connector = isLast ? '└── ' : '├── ';
     const childPrefix = prefix + (isLast ? '    ' : '│   ');
@@ -183,7 +191,9 @@ function printTree(
       : pc.cyan(child);
 
     console.log(prefix + pc.dim(connector) + branchDisplay);
-    printTree(child, childrenMap, childPrefix, highlight);
+    
+    visited.add(child);
+    printTree(child, childrenMap, childPrefix, highlight, visited);
   }
 }
 
