@@ -1,5 +1,6 @@
 /**
  * Stack branch command - Create a new branch as a child in the current stack
+ * Uses neverthrow Result types for error handling
  */
 
 import * as clack from '@clack/prompts';
@@ -25,7 +26,13 @@ export async function stackBranchCommand(
     process.exit(1);
   }
 
-  const repo = await GitOperations.getRepository();
+  const repoResult = await GitOperations.getRepository();
+  if (repoResult.isErr()) {
+    clack.cancel(repoResult.error.message);
+    process.exit(1);
+  }
+
+  const repo = repoResult.value;
   const currentBranch = await GitOperations.getCurrentBranch(repo.root);
 
   if (!currentBranch) {
@@ -60,14 +67,10 @@ export async function stackBranchCommand(
   spinner.start('Creating branch...');
 
   // Create the new branch from current HEAD
-  try {
-    await GitOperations.execOrThrow(
-      ['checkout', '-b', branchName],
-      repo.root
-    );
-  } catch (e) {
+  const checkoutResult = await GitOperations.checkoutNewBranch(branchName, repo.root);
+  if (checkoutResult.isErr()) {
     spinner.stop('Failed');
-    clack.cancel(`Failed to create branch: ${e instanceof Error ? e.message : String(e)}`);
+    clack.cancel(`Failed to create branch: ${checkoutResult.error.message}`);
     process.exit(1);
   }
 
@@ -76,12 +79,8 @@ export async function stackBranchCommand(
   if (addResult.isErr()) {
     spinner.stop('Failed');
     // Try to clean up by switching back and deleting the branch
-    try {
-      await GitOperations.execOrThrow(['checkout', currentBranch], repo.root);
-      await GitOperations.execOrThrow(['branch', '-D', branchName], repo.root);
-    } catch {
-      // Ignore cleanup errors
-    }
+    await GitOperations.checkout(currentBranch, repo.root);
+    await GitOperations.deleteBranch(branchName, true, repo.root);
     clack.cancel(addResult.error.format());
     process.exit(1);
   }
@@ -91,24 +90,24 @@ export async function stackBranchCommand(
   // Optionally create worktree
   if (options.worktree) {
     const worktreePath = options.path || await generateWorktreePath(repo.root, branchName);
-    
+
     spinner.start('Creating worktree...');
-    try {
-      // Switch back to parent first since we need to create worktree for the new branch
-      await GitOperations.execOrThrow(['checkout', currentBranch], repo.root);
-      await GitOperations.addWorktree(worktreePath, branchName, {}, repo.root);
+    // Switch back to parent first since we need to create worktree for the new branch
+    await GitOperations.checkout(currentBranch, repo.root);
+    const worktreeResult = await GitOperations.addWorktree(worktreePath, branchName, {}, repo.root);
+
+    if (worktreeResult.isErr()) {
+      spinner.stop('Worktree creation failed');
+      clack.log.warn(`Could not create worktree: ${worktreeResult.error.message}`);
+    } else {
       spinner.stop('Worktree created');
-      
       console.log('');
       console.log(pc.dim(`Worktree created at: ${worktreePath}`));
-    } catch (e) {
-      spinner.stop('Worktree creation failed');
-      clack.log.warn(`Could not create worktree: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   // Get short commit for display
-  const shortCommit = await getShortCommit(repo.root);
+  const shortCommit = await GitOperations.getShortCommit(repo.root);
 
   console.log('');
   console.log(pc.green('✓') + ' Created branch ' + pc.cyan(pc.bold(branchName)));
@@ -155,13 +154,13 @@ async function showStackPosition(
   }
 
   console.log(pc.dim('Stack:'));
-  
+
   // Print trunk
   console.log('  ' + pc.yellow(stack.trunk) + pc.dim(' (trunk)'));
-  
+
   // Recursively print children
   printTree(stack.trunk, childrenMap, '  ', newBranch);
-  
+
   console.log('');
 }
 
@@ -172,17 +171,17 @@ function printTree(
   highlight: string
 ): void {
   const children = childrenMap.get(branch) || [];
-  
+
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
     const isLast = i === children.length - 1;
     const connector = isLast ? '└── ' : '├── ';
     const childPrefix = prefix + (isLast ? '    ' : '│   ');
-    
+
     const branchDisplay = child === highlight
       ? pc.cyan(pc.bold(child)) + ' ' + pc.green('◀ you are here')
       : pc.cyan(child);
-    
+
     console.log(prefix + pc.dim(connector) + branchDisplay);
     printTree(child, childrenMap, childPrefix, highlight);
   }
@@ -196,18 +195,3 @@ async function generateWorktreePath(repoRoot: string, branchName: string): Promi
   const safeBranchName = branchName.replace(/\//g, '-');
   return `${repoRoot}/../${repoName}-${safeBranchName}`;
 }
-
-/**
- * Get short commit hash for display
- */
-async function getShortCommit(repoRoot: string): Promise<string> {
-  try {
-    return await GitOperations.execOrThrow(
-      ['rev-parse', '--short', 'HEAD'],
-      repoRoot
-    );
-  } catch {
-    return 'unknown';
-  }
-}
-

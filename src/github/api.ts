@@ -1,8 +1,9 @@
 /**
- * GitHub API client for PR operations
+ * GitHub API client for PR operations using neverthrow Result types
  */
 
 import { spawn } from 'bun';
+import { Result, ok, err } from 'neverthrow';
 import * as clack from '@clack/prompts';
 import { GitOperations } from '../git/operations.js';
 import type {
@@ -13,6 +14,8 @@ import type {
 } from './types.js';
 import { GitHubError } from './types.js';
 
+export type GitHubResult<T> = Result<T, GitHubError>;
+
 export class GitHubAPI {
   private auth: GitHubAuth | null = null;
   private repo: GitHubRepo | null = null;
@@ -21,23 +24,23 @@ export class GitHubAPI {
    * Authenticate with GitHub
    * Try gh CLI first, then env var, then prompt
    */
-  async authenticate(): Promise<GitHubAuth> {
+  async authenticate(): Promise<GitHubResult<GitHubAuth>> {
     if (this.auth) {
-      return this.auth;
+      return ok(this.auth);
     }
 
     // Try gh CLI first
     const ghToken = await this.getGHToken();
     if (ghToken) {
       this.auth = { token: ghToken, source: 'gh-cli' };
-      return this.auth;
+      return ok(this.auth);
     }
 
     // Try environment variable
     const envToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
     if (envToken) {
       this.auth = { token: envToken, source: 'env' };
-      return this.auth;
+      return ok(this.auth);
     }
 
     // Prompt user for token
@@ -53,32 +56,28 @@ export class GitHubAPI {
     });
 
     if (clack.isCancel(token)) {
-      throw new GitHubError('Authentication cancelled');
+      return err(new GitHubError('Authentication cancelled'));
     }
 
     this.auth = { token: token as string, source: 'prompt' };
-    return this.auth;
+    return ok(this.auth);
   }
 
   /**
    * Try to get token from gh CLI
    */
   private async getGHToken(): Promise<string | null> {
-    try {
-      const proc = spawn({
-        cmd: ['gh', 'auth', 'token'],
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+    const proc = spawn({
+      cmd: ['gh', 'auth', 'token'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
 
-      const stdout = await new Response(proc.stdout).text();
-      const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
 
-      if (exitCode === 0 && stdout.trim()) {
-        return stdout.trim();
-      }
-    } catch {
-      // gh CLI not available or not authenticated
+    if (exitCode === 0 && stdout.trim()) {
+      return stdout.trim();
     }
     return null;
   }
@@ -86,25 +85,31 @@ export class GitHubAPI {
   /**
    * Get repository info from git remote
    */
-  async getRepoInfo(cwd?: string): Promise<GitHubRepo> {
+  async getRepoInfo(cwd?: string): Promise<GitHubResult<GitHubRepo>> {
     if (this.repo) {
-      return this.repo;
+      return ok(this.repo);
     }
 
-    const remoteUrl = await GitOperations.execOrThrow(
+    const remoteResult = await GitOperations.execResult(
       ['config', '--get', 'remote.origin.url'],
       cwd
     );
 
-    const repo = this.parseGitHubUrl(remoteUrl);
+    if (remoteResult.isErr()) {
+      return err(new GitHubError('Could not get remote URL: ' + remoteResult.error.message));
+    }
+
+    const repo = this.parseGitHubUrl(remoteResult.value);
     if (!repo) {
-      throw new GitHubError(
-        'Could not parse GitHub repository from remote URL: ' + remoteUrl
+      return err(
+        new GitHubError(
+          'Could not parse GitHub repository from remote URL: ' + remoteResult.value
+        )
       );
     }
 
     this.repo = repo;
-    return repo;
+    return ok(repo);
   }
 
   /**
@@ -154,9 +159,19 @@ export class GitHubAPI {
   private async apiRequest<T>(
     endpoint: string,
     options: RequestInit = {}
-  ): Promise<T> {
-    const auth = await this.authenticate();
-    const repo = await this.getRepoInfo();
+  ): Promise<GitHubResult<T>> {
+    const authResult = await this.authenticate();
+    if (authResult.isErr()) {
+      return err(authResult.error);
+    }
+
+    const repoResult = await this.getRepoInfo();
+    if (repoResult.isErr()) {
+      return err(repoResult.error);
+    }
+
+    const auth = authResult.value;
+    const repo = repoResult.value;
     const baseUrl = this.getAPIBaseUrl(repo.host);
 
     const url = `${baseUrl}${endpoint}`;
@@ -176,42 +191,52 @@ export class GitHubAPI {
     if (!response.ok) {
       const errorBody = await response.text();
       let errorMessage = `GitHub API error: ${response.status} ${response.statusText}`;
-      
-      try {
-        const errorJson = JSON.parse(errorBody);
+
+      const parseResult = Result.fromThrowable(
+        () => JSON.parse(errorBody),
+        () => null
+      )();
+
+      if (parseResult.isOk() && parseResult.value) {
+        const errorJson = parseResult.value;
         if (errorJson.message) {
           errorMessage = errorJson.message;
-          
+
           // Include detailed errors if available
           if (errorJson.errors && Array.isArray(errorJson.errors)) {
             const details = errorJson.errors
               .map((e: any) => {
                 if (typeof e === 'string') return e;
                 if (e.message) return e.message;
-                if (e.resource && e.field) return `${e.resource}.${e.field}: ${e.code || 'invalid'}`;
+                if (e.resource && e.field)
+                  return `${e.resource}.${e.field}: ${e.code || 'invalid'}`;
                 return JSON.stringify(e);
               })
               .join('; ');
             errorMessage += ` (${details})`;
           }
         }
-      } catch {
-        // Error body is not JSON, use default message
       }
 
-      throw new GitHubError(errorMessage, response.status, errorBody);
+      return err(new GitHubError(errorMessage, response.status, errorBody));
     }
 
-    return await response.json() as T;
+    const data = (await response.json()) as T;
+    return ok(data);
   }
 
   /**
    * Create a pull request
    */
-  async createPR(request: CreatePRRequest): Promise<GitHubPR> {
-    const repo = await this.getRepoInfo();
+  async createPR(request: CreatePRRequest): Promise<GitHubResult<GitHubPR>> {
+    const repoResult = await this.getRepoInfo();
+    if (repoResult.isErr()) {
+      return err(repoResult.error);
+    }
 
-    const pr = await this.apiRequest<GitHubPR>(
+    const repo = repoResult.value;
+
+    return this.apiRequest<GitHubPR>(
       `/repos/${repo.owner}/${repo.repo}/pulls`,
       {
         method: 'POST',
@@ -224,42 +249,44 @@ export class GitHubAPI {
         }),
       }
     );
-
-    return pr;
   }
 
   /**
    * Get existing PR for a branch
    */
   async getPRForBranch(branch: string): Promise<GitHubPR | null> {
-    const repo = await this.getRepoInfo();
-
-    try {
-      const prs = await this.apiRequest<GitHubPR[]>(
-        `/repos/${repo.owner}/${repo.repo}/pulls?head=${repo.owner}:${branch}&state=open`
-      );
-
-      return prs.length > 0 ? prs[0] : null;
-    } catch (error) {
-      // If we get a 404 or other error, assume no PR exists
+    const repoResult = await this.getRepoInfo();
+    if (repoResult.isErr()) {
       return null;
     }
+
+    const repo = repoResult.value;
+    const prsResult = await this.apiRequest<GitHubPR[]>(
+      `/repos/${repo.owner}/${repo.repo}/pulls?head=${repo.owner}:${branch}&state=open`
+    );
+
+    if (prsResult.isErr()) {
+      return null;
+    }
+
+    return prsResult.value.length > 0 ? prsResult.value[0] : null;
   }
 
   /**
    * Check if a branch exists on remote
    */
   async remoteBranchExists(branch: string): Promise<boolean> {
-    const repo = await this.getRepoInfo();
-
-    try {
-      await this.apiRequest(
-        `/repos/${repo.owner}/${repo.repo}/branches/${branch}`
-      );
-      return true;
-    } catch {
+    const repoResult = await this.getRepoInfo();
+    if (repoResult.isErr()) {
       return false;
     }
+
+    const repo = repoResult.value;
+    const result = await this.apiRequest(
+      `/repos/${repo.owner}/${repo.repo}/branches/${branch}`
+    );
+
+    return result.isOk();
   }
 
   /**
@@ -268,10 +295,15 @@ export class GitHubAPI {
   async updatePR(
     prNumber: number,
     updates: { title?: string; body?: string }
-  ): Promise<GitHubPR> {
-    const repo = await this.getRepoInfo();
+  ): Promise<GitHubResult<GitHubPR>> {
+    const repoResult = await this.getRepoInfo();
+    if (repoResult.isErr()) {
+      return err(repoResult.error);
+    }
 
-    return await this.apiRequest<GitHubPR>(
+    const repo = repoResult.value;
+
+    return this.apiRequest<GitHubPR>(
       `/repos/${repo.owner}/${repo.repo}/pulls/${prNumber}`,
       {
         method: 'PATCH',
@@ -283,12 +315,16 @@ export class GitHubAPI {
   /**
    * Get all open PRs for the repository
    */
-  async getAllOpenPRs(): Promise<GitHubPR[]> {
-    const repo = await this.getRepoInfo();
+  async getAllOpenPRs(): Promise<GitHubResult<GitHubPR[]>> {
+    const repoResult = await this.getRepoInfo();
+    if (repoResult.isErr()) {
+      return err(repoResult.error);
+    }
 
-    return await this.apiRequest<GitHubPR[]>(
+    const repo = repoResult.value;
+
+    return this.apiRequest<GitHubPR[]>(
       `/repos/${repo.owner}/${repo.repo}/pulls?state=open&per_page=100`
     );
   }
 }
-

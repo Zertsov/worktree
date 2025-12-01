@@ -1,5 +1,6 @@
 /**
  * Stack detection - auto-detect parent-child relationships
+ * Uses neverthrow Result types internally
  */
 
 import { GitOperations } from '../git/operations.js';
@@ -12,7 +13,7 @@ export class StackDetector {
   private repoRoot: string;
   private configManager: ConfigManager;
   private cachedBranchParents: Record<string, string> | null = null;
-  
+
   // Memoization caches for git operations
   private mergeBaseCache = new Map<string, string | null>();
   private revParseCache = new Map<string, string>();
@@ -45,7 +46,8 @@ export class StackDetector {
 
     // Load config once for all branches
     if (!this.cachedBranchParents) {
-      const config = await this.configManager.load();
+      const configResult = await this.configManager.load();
+      const config = configResult.isOk() ? configResult.value : { branchParents: {} };
       this.cachedBranchParents = config.branchParents || {};
     }
 
@@ -145,12 +147,12 @@ export class StackDetector {
     if (this.revParseCache.has(ref)) {
       return this.revParseCache.get(ref)!;
     }
-    const result = await GitOperations.execOrThrow(
-      ['rev-parse', ref],
-      this.repoRoot
-    );
-    this.revParseCache.set(ref, result.trim());
-    return result.trim();
+    const result = await GitOperations.getCommit(ref, this.repoRoot);
+    if (result.isErr()) {
+      return '';
+    }
+    this.revParseCache.set(ref, result.value);
+    return result.value;
   }
 
   /**
@@ -259,9 +261,9 @@ export class StackDetector {
 
         if (distanceToCandidate !== null && distanceToCandidate <= 50) {
           // Prefer common base branches (main, master, develop) as parents
-          const commonBases = ['main', 'master', 'develop', 'dev'];
-          const isCommonBase = commonBases.includes(candidate);
-          
+          const commonBasesLocal = ['main', 'master', 'develop', 'dev'];
+          const isCommonBase = commonBasesLocal.includes(candidate);
+
           return {
             branch: candidate,
             mergeBase,
@@ -313,15 +315,14 @@ export class StackDetector {
     from: string,
     to: string
   ): Promise<number | null> {
-    try {
-      const result = await GitOperations.execOrThrow(
-        ['rev-list', '--count', `${from}..${to}`],
-        this.repoRoot
-      );
-      return parseInt(result.trim(), 10);
-    } catch {
+    const result = await GitOperations.execResult(
+      ['rev-list', '--count', `${from}..${to}`],
+      this.repoRoot
+    );
+    if (result.isErr()) {
       return null;
     }
+    return parseInt(result.value.trim(), 10);
   }
 
   /**
@@ -388,7 +389,7 @@ export class StackDetector {
     }
 
     // Build stack nodes with depth information
-    for (const [root, stack] of stacks.entries()) {
+    for (const [_root, stack] of stacks.entries()) {
       await this.buildStackNodes(stack, relationships, worktrees);
     }
 
@@ -466,8 +467,12 @@ export class StackDetector {
    * Get all branches for a repository
    */
   async getAllBranches(): Promise<Branch[]> {
-    const output = await GitOperations.listBranches(this.repoRoot);
-    const branches = GitParser.parseBranches(output);
+    const outputResult = await GitOperations.listBranches(this.repoRoot);
+    if (outputResult.isErr()) {
+      return [];
+    }
+
+    const branches = GitParser.parseBranches(outputResult.value);
 
     // Mark current branch
     const currentBranch = await GitOperations.getCurrentBranch(this.repoRoot);
@@ -485,8 +490,10 @@ export class StackDetector {
    * Get all worktrees for a repository
    */
   async getAllWorktrees(): Promise<Worktree[]> {
-    const output = await GitOperations.listWorktrees(this.repoRoot);
-    return GitParser.parseWorktrees(output);
+    const outputResult = await GitOperations.listWorktrees(this.repoRoot);
+    if (outputResult.isErr()) {
+      return [];
+    }
+    return GitParser.parseWorktrees(outputResult.value);
   }
 }
-

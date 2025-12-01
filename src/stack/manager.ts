@@ -1,12 +1,11 @@
 /**
  * Stack management - CRUD operations for explicit stack tracking via git config
+ * Uses neverthrow Result types for all operations
  */
 
-import { Result } from 'neverthrow';
-import { GitOperations } from '../git/operations.js';
 import { type IGitOperations, defaultGitOps } from '../git/interface.js';
 import {
-  StackResult,
+  type StackResult,
   StackErrors,
   stackOk,
   stackErr,
@@ -92,7 +91,7 @@ export class StackManager {
     // Get current commit as base
     const baseCommit = await this.getCurrentCommit();
     if (baseCommit.isErr()) {
-      return baseCommit;
+      return stackErr('GIT_ERROR', baseCommit.error.message);
     }
 
     const createdAt = new Date().toISOString();
@@ -102,19 +101,25 @@ export class StackManager {
       `stacks.${stackName}.trunk`,
       trunk
     );
-    if (stackConfigResult.isErr()) return stackConfigResult;
+    if (stackConfigResult.isErr()) {
+      return stackErr('CONFIG_ERROR', stackConfigResult.error.message);
+    }
 
     const rootConfigResult = await this.setGitConfig(
       `stacks.${stackName}.root`,
       rootBranch
     );
-    if (rootConfigResult.isErr()) return rootConfigResult;
+    if (rootConfigResult.isErr()) {
+      return stackErr('CONFIG_ERROR', rootConfigResult.error.message);
+    }
 
     const createdConfigResult = await this.setGitConfig(
       `stacks.${stackName}.created`,
       createdAt
     );
-    if (createdConfigResult.isErr()) return createdConfigResult;
+    if (createdConfigResult.isErr()) {
+      return stackErr('CONFIG_ERROR', createdConfigResult.error.message);
+    }
 
     // Store branch metadata (root branch has trunk as parent)
     const branchResult = await this.setBranchStackMetadata(rootBranch, {
@@ -122,7 +127,9 @@ export class StackManager {
       parent: trunk,
       baseCommit: baseCommit.value,
     });
-    if (branchResult.isErr()) return branchResult;
+    if (branchResult.isErr()) {
+      return stackErr('CONFIG_ERROR', branchResult.error.message);
+    }
 
     return stackOk({
       name: stackName,
@@ -167,7 +174,7 @@ export class StackManager {
     // Get current commit as base
     const baseCommit = await this.getCurrentCommit();
     if (baseCommit.isErr()) {
-      return baseCommit;
+      return stackErr('GIT_ERROR', baseCommit.error.message);
     }
 
     const metadata: BranchStackMetadata = {
@@ -177,7 +184,9 @@ export class StackManager {
     };
 
     const result = await this.setBranchStackMetadata(branchName, metadata);
-    if (result.isErr()) return result;
+    if (result.isErr()) {
+      return stackErr('CONFIG_ERROR', result.error.message);
+    }
 
     return stackOk(metadata);
   }
@@ -325,7 +334,9 @@ export class StackManager {
   async deleteStack(stackName: string): Promise<StackResult<void>> {
     // Get all branches in the stack
     const branches = await this.getStackBranches(stackName);
-    if (branches.isErr()) return branches;
+    if (branches.isErr()) {
+      return stackErr('CONFIG_ERROR', branches.error.message);
+    }
 
     // Remove branch metadata
     for (const branchName of branches.value.keys()) {
@@ -351,10 +362,14 @@ export class StackManager {
    */
   async getFullStackInfo(stackName: string): Promise<StackResult<StackInfo>> {
     const metadata = await this.getStackMetadata(stackName);
-    if (metadata.isErr()) return metadata;
+    if (metadata.isErr()) {
+      return stackErr('STACK_NOT_FOUND', metadata.error.message);
+    }
 
     const branches = await this.getStackBranches(stackName);
-    if (branches.isErr()) return branches;
+    if (branches.isErr()) {
+      return stackErr('CONFIG_ERROR', branches.error.message);
+    }
 
     return stackOk({
       metadata: metadata.value,
@@ -373,7 +388,7 @@ export class StackManager {
 
     const branchStack = await this.getBranchStack(currentBranch);
     if (branchStack.isErr()) {
-      return branchStack;
+      return stackErr('NOT_IN_STACK', branchStack.error.message);
     }
 
     return stackOk(branchStack.value.stackName);
@@ -382,15 +397,11 @@ export class StackManager {
   // ============ Private Helpers ============
 
   private async getCurrentCommit(): Promise<StackResult<string>> {
-    try {
-      const commit = await this.git.execOrThrow(
-        ['rev-parse', 'HEAD'],
-        this.repoRoot
-      );
-      return stackOk(commit);
-    } catch (e) {
-      return StackErrors.gitError('rev-parse', e instanceof Error ? e.message : String(e));
+    const result = await this.git.getCommit('HEAD', this.repoRoot);
+    if (result.isErr()) {
+      return StackErrors.gitError('rev-parse', result.error.message);
     }
+    return stackOk(result.value);
   }
 
   private async getGitConfig(key: string): Promise<StackResult<string | null>> {
@@ -408,15 +419,16 @@ export class StackManager {
   }
 
   private async setGitConfig(key: string, value: string): Promise<StackResult<void>> {
-    try {
-      await this.git.execOrThrow(
-        ['config', key, value],
-        this.repoRoot
-      );
-      return stackOk(undefined);
-    } catch (e) {
-      return StackErrors.configError(e instanceof Error ? e.message : String(e));
+    const result = await this.git.execResult(
+      ['config', key, value],
+      this.repoRoot
+    );
+
+    if (result.isErr()) {
+      return StackErrors.configError(result.error.message);
     }
+
+    return stackOk(undefined);
   }
 
   private async unsetGitConfig(key: string): Promise<StackResult<void>> {
@@ -458,4 +470,3 @@ export class StackManager {
     return stackOk(undefined);
   }
 }
-

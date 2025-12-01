@@ -1,5 +1,6 @@
 /**
  * Stack init command - Initialize a new stack from the current branch
+ * Uses neverthrow Result types for error handling
  */
 
 import * as clack from '@clack/prompts';
@@ -22,7 +23,13 @@ export async function stackInitCommand(options: StackInitOptions): Promise<void>
     process.exit(1);
   }
 
-  const repo = await GitOperations.getRepository();
+  const repoResult = await GitOperations.getRepository();
+  if (repoResult.isErr()) {
+    clack.cancel(repoResult.error.message);
+    process.exit(1);
+  }
+
+  const repo = repoResult.value;
   const currentBranch = await GitOperations.getCurrentBranch(repo.root);
 
   if (!currentBranch) {
@@ -52,7 +59,7 @@ export async function stackInitCommand(options: StackInitOptions): Promise<void>
   console.log('');
   console.log('  ' + pc.dim('Stack root:') + '   ' + pc.cyan(stack.root));
   console.log('  ' + pc.dim('Trunk:') + '        ' + pc.yellow(stack.trunk));
-  console.log('  ' + pc.dim('Base commit:') + '  ' + pc.dim(await getShortCommit(repo.root)));
+  console.log('  ' + pc.dim('Base commit:') + '  ' + pc.dim(await GitOperations.getShortCommit(repo.root)));
   console.log('');
   console.log(pc.dim('Next steps:'));
   console.log(`  ${pc.dim('•')} Create child branches with: ${pc.cyan(`stacks new ${pc.dim('<name>')}`)}`);
@@ -82,18 +89,3 @@ function generateStackName(branch: string): string {
 
   return name.toLowerCase();
 }
-
-/**
- * Get short commit hash for display
- */
-async function getShortCommit(repoRoot: string): Promise<string> {
-  try {
-    return await GitOperations.execOrThrow(
-      ['rev-parse', '--short', 'HEAD'],
-      repoRoot
-    );
-  } catch {
-    return 'unknown';
-  }
-}
-

@@ -1,5 +1,6 @@
 /**
  * Stack sync command - Sync branches with their parents
+ * Uses neverthrow Result types for error handling
  */
 
 import * as clack from '@clack/prompts';
@@ -25,7 +26,13 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
     process.exit(1);
   }
 
-  const repo = await GitOperations.getRepository();
+  const repoResult = await GitOperations.getRepository();
+  if (repoResult.isErr()) {
+    clack.cancel(repoResult.error.message);
+    process.exit(1);
+  }
+
+  const repo = repoResult.value;
   const currentBranch = await GitOperations.getCurrentBranch(repo.root);
   const manager = new StackManager(repo.root);
   const syncManager = new SyncManager(repo.root);
@@ -80,7 +87,7 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
 
   const branchesToSync = status.branches.filter(b => b.status !== 'synced' && b.status !== 'error');
   for (const branch of branchesToSync) {
-    const indicator = branch.status === 'behind' 
+    const indicator = branch.status === 'behind'
       ? pc.yellow(`+${branch.commitsBehind}`)
       : pc.red('diverged');
     console.log(`  ${colorFn('●')} ${colorFn(branch.branch)} ${pc.dim('→')} ${branch.parent} ${pc.dim(`(${indicator})`)}`);
@@ -99,17 +106,17 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
 
   // Fetch latest from remote first
   spinner.start('Fetching from remote...');
-  try {
-    await GitOperations.execOrThrow(['fetch', '--all'], repo.root);
-    spinner.stop('Fetched');
-  } catch (e) {
+  const fetchResult = await GitOperations.fetch('--all', repo.root);
+  if (fetchResult.isErr()) {
     spinner.stop('Fetch failed (continuing anyway)');
-    clack.log.warn(`Could not fetch: ${e instanceof Error ? e.message : String(e)}`);
+    clack.log.warn(`Could not fetch: ${fetchResult.error.message}`);
+  } else {
+    spinner.stop('Fetched');
   }
 
   // Sync the stack
   console.log('');
-  
+
   const syncResult = await syncManager.syncStack(stackName, {
     merge: options.merge,
     force: options.force,
@@ -132,7 +139,7 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
     } else {
       hasFailures = true;
       console.log(pc.red('✗') + ` ${colorFn(result.branch)} failed`);
-      
+
       if (result.conflictFiles && result.conflictFiles.length > 0) {
         console.log('');
         console.log(pc.yellow('  Conflicts in:'));
@@ -160,29 +167,24 @@ export async function stackSyncCommand(options: StackSyncOptions = {}): Promise<
     clack.log.warn('Sync incomplete - resolve conflicts and run sync again');
   } else {
     console.log(pc.green('✓') + ' ' + pc.bold('Stack synced successfully!'));
-    
+
     if (options.push) {
       console.log('');
       spinner.start('Pushing to remote...');
-      
+
       for (const result of results) {
         if (result.success && result.newBase) {
-          try {
-            await GitOperations.execOrThrow(
-              ['push', '--force-with-lease', 'origin', result.branch],
-              repo.root
-            );
-          } catch (e) {
+          const pushResult = await GitOperations.pushForce(result.branch, 'origin', repo.root);
+          if (pushResult.isErr()) {
             spinner.stop('Push failed');
-            clack.log.warn(`Could not push ${result.branch}: ${e instanceof Error ? e.message : String(e)}`);
+            clack.log.warn(`Could not push ${result.branch}: ${pushResult.error.message}`);
           }
         }
       }
-      
+
       spinner.stop('Pushed');
     }
   }
 
   console.log('');
 }
-

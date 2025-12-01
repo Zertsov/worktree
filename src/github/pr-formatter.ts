@@ -127,8 +127,8 @@ export function removeStackNavigation(body: string): string {
  * Build navigation info from stack metadata and PR info
  */
 export function buildNavigationInfo(
-  stackMeta: StackMetadata,
-  branches: Map<string, BranchStackMetadata>,
+  stackMeta: Pick<StackMetadata, 'name' | 'trunk'>,
+  branches: Map<string, Pick<BranchStackMetadata, 'parent'>>,
   currentBranch: string,
   prMap: Map<string, GitHubPR>
 ): StackNavigationInfo {

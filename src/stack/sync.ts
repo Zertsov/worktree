@@ -1,11 +1,11 @@
 /**
- * Stack sync detection and execution
+ * Stack sync detection and execution using neverthrow Result types
  */
 
 import { GitOperations } from '../git/operations.js';
 import { StackManager, type BranchStackMetadata } from './manager.js';
 import {
-  StackResult,
+  type StackResult,
   StackErrors,
   stackOk,
   stackErr,
@@ -62,12 +62,12 @@ export class SyncManager {
   async getStackSyncStatus(stackName: string): Promise<StackResult<StackSyncStatus>> {
     const stackMeta = await this.manager.getStackMetadata(stackName);
     if (stackMeta.isErr()) {
-      return stackMeta;
+      return stackErr('STACK_NOT_FOUND', stackMeta.error.message);
     }
 
     const branchesResult = await this.manager.getStackBranches(stackName);
     if (branchesResult.isErr()) {
-      return branchesResult;
+      return stackErr('CONFIG_ERROR', branchesResult.error.message);
     }
 
     const branches = branchesResult.value;
@@ -111,53 +111,51 @@ export class SyncManager {
       commitsAhead: 0,
     };
 
-    try {
-      // Get current HEAD of parent branch
-      const parentHead = await GitOperations.execOrThrow(
-        ['rev-parse', meta.parent],
-        this.repoRoot
-      );
-      baseStatus.parentHead = parentHead;
-
-      // If base commit matches parent HEAD, we're synced
-      if (meta.baseCommit === parentHead) {
-        return baseStatus;
-      }
-
-      // Check if base commit is an ancestor of parent HEAD
-      const isAncestor = await this.isAncestor(meta.baseCommit, parentHead);
-      
-      if (isAncestor) {
-        // Parent has moved forward, we're behind
-        const commitsBehind = await this.countCommits(meta.baseCommit, parentHead);
-        return {
-          ...baseStatus,
-          status: 'behind',
-          commitsBehind,
-        };
-      }
-
-      // Check if we've diverged (rebased, force-pushed, etc.)
-      const mergeBase = await GitOperations.getMergeBase(branchName, meta.parent, this.repoRoot);
-      if (mergeBase && mergeBase !== meta.baseCommit) {
-        const commitsBehind = await this.countCommits(mergeBase, parentHead);
-        const commitsAhead = await this.countCommits(mergeBase, branchName);
-        return {
-          ...baseStatus,
-          status: 'diverged',
-          commitsBehind,
-          commitsAhead,
-        };
-      }
-
-      return baseStatus;
-    } catch (e) {
+    // Get current HEAD of parent branch
+    const parentHeadResult = await GitOperations.getCommit(meta.parent, this.repoRoot);
+    if (parentHeadResult.isErr()) {
       return {
         ...baseStatus,
         status: 'error',
-        error: e instanceof Error ? e.message : String(e),
+        error: parentHeadResult.error.message,
       };
     }
+
+    const parentHead = parentHeadResult.value;
+    baseStatus.parentHead = parentHead;
+
+    // If base commit matches parent HEAD, we're synced
+    if (meta.baseCommit === parentHead) {
+      return baseStatus;
+    }
+
+    // Check if base commit is an ancestor of parent HEAD
+    const isAncestor = await this.isAncestor(meta.baseCommit, parentHead);
+
+    if (isAncestor) {
+      // Parent has moved forward, we're behind
+      const commitsBehind = await this.countCommits(meta.baseCommit, parentHead);
+      return {
+        ...baseStatus,
+        status: 'behind',
+        commitsBehind,
+      };
+    }
+
+    // Check if we've diverged (rebased, force-pushed, etc.)
+    const mergeBase = await GitOperations.getMergeBase(branchName, meta.parent, this.repoRoot);
+    if (mergeBase && mergeBase !== meta.baseCommit) {
+      const commitsBehind = await this.countCommits(mergeBase, parentHead);
+      const commitsAhead = await this.countCommits(mergeBase, branchName);
+      return {
+        ...baseStatus,
+        status: 'diverged',
+        commitsBehind,
+        commitsAhead,
+      };
+    }
+
+    return baseStatus;
   }
 
   /**
@@ -169,7 +167,7 @@ export class SyncManager {
   ): Promise<StackResult<SyncResult>> {
     const branchMeta = await this.manager.getBranchStack(branchName);
     if (branchMeta.isErr()) {
-      return branchMeta;
+      return stackErr('NOT_IN_STACK', branchMeta.error.message);
     }
 
     const meta = branchMeta.value;
@@ -183,61 +181,52 @@ export class SyncManager {
     // Get current branch to restore later
     const currentBranch = await GitOperations.getCurrentBranch(this.repoRoot);
 
-    try {
-      // Checkout the branch to sync
-      await GitOperations.execOrThrow(['checkout', branchName], this.repoRoot);
-
-      if (options.merge) {
-        // Merge mode
-        const mergeResult = await this.mergeBranch(branchName, meta.parent);
-        if (mergeResult.isErr()) {
-          // Restore original branch on failure
-          if (currentBranch && currentBranch !== branchName) {
-            await GitOperations.exec(['checkout', currentBranch], this.repoRoot);
-          }
-          return mergeResult;
-        }
-      } else {
-        // Rebase mode (default)
-        const rebaseResult = await this.rebaseBranch(branchName, meta.parent);
-        if (rebaseResult.isErr()) {
-          // Restore original branch on failure
-          if (currentBranch && currentBranch !== branchName) {
-            await GitOperations.exec(['checkout', currentBranch], this.repoRoot);
-          }
-          return rebaseResult;
-        }
-      }
-
-      // Get new parent HEAD and update base commit
-      const newBase = await GitOperations.execOrThrow(
-        ['rev-parse', meta.parent],
-        this.repoRoot
-      );
-
-      await this.manager.updateBranchBase(branchName, newBase);
-
-      // Restore original branch if different
-      if (currentBranch && currentBranch !== branchName) {
-        await GitOperations.exec(['checkout', currentBranch], this.repoRoot);
-      }
-
-      return stackOk({
-        branch: branchName,
-        success: true,
-        newBase,
-      });
-    } catch (e) {
-      // Try to restore original branch
-      if (currentBranch) {
-        await GitOperations.exec(['checkout', currentBranch], this.repoRoot);
-      }
-
+    // Checkout the branch to sync
+    const checkoutResult = await GitOperations.checkout(branchName, this.repoRoot);
+    if (checkoutResult.isErr()) {
       return stackErr(
         'GIT_ERROR',
-        `Failed to sync ${branchName}: ${e instanceof Error ? e.message : String(e)}`
+        `Failed to checkout ${branchName}: ${checkoutResult.error.message}`
       );
     }
+
+    let syncResult: StackResult<void>;
+
+    if (options.merge) {
+      // Merge mode
+      syncResult = await this.mergeBranch(branchName, meta.parent);
+    } else {
+      // Rebase mode (default)
+      syncResult = await this.rebaseBranch(branchName, meta.parent);
+    }
+
+    if (syncResult.isErr()) {
+      // Restore original branch on failure
+      if (currentBranch && currentBranch !== branchName) {
+        await GitOperations.checkout(currentBranch, this.repoRoot);
+      }
+      return stackErr('GIT_ERROR', syncResult.error.message, syncResult.error.details);
+    }
+
+    // Get new parent HEAD and update base commit
+    const newBaseResult = await GitOperations.getCommit(meta.parent, this.repoRoot);
+    if (newBaseResult.isErr()) {
+      return stackErr('GIT_ERROR', `Failed to get parent HEAD: ${newBaseResult.error.message}`);
+    }
+
+    const newBase = newBaseResult.value;
+    await this.manager.updateBranchBase(branchName, newBase);
+
+    // Restore original branch if different
+    if (currentBranch && currentBranch !== branchName) {
+      await GitOperations.checkout(currentBranch, this.repoRoot);
+    }
+
+    return stackOk({
+      branch: branchName,
+      success: true,
+      newBase,
+    });
   }
 
   /**
@@ -249,7 +238,7 @@ export class SyncManager {
   ): Promise<StackResult<SyncResult[]>> {
     const statusResult = await this.getStackSyncStatus(stackName);
     if (statusResult.isErr()) {
-      return statusResult;
+      return stackErr('STACK_NOT_FOUND', statusResult.error.message);
     }
 
     const status = statusResult.value;
@@ -298,15 +287,15 @@ export class SyncManager {
   async restackBranches(stackName: string): Promise<StackResult<void>> {
     const branchesResult = await this.manager.getStackBranches(stackName);
     if (branchesResult.isErr()) {
-      return branchesResult;
+      return stackErr('CONFIG_ERROR', branchesResult.error.message);
     }
 
     for (const [branchName, meta] of branchesResult.value) {
-      const parentHead = await GitOperations.execOrThrow(
-        ['rev-parse', meta.parent],
-        this.repoRoot
-      );
-      await this.manager.updateBranchBase(branchName, parentHead);
+      const parentHeadResult = await GitOperations.getCommit(meta.parent, this.repoRoot);
+      if (parentHeadResult.isErr()) {
+        return stackErr('GIT_ERROR', `Failed to get parent HEAD: ${parentHeadResult.error.message}`);
+      }
+      await this.manager.updateBranchBase(branchName, parentHeadResult.value);
     }
 
     return stackOk(undefined);
@@ -353,39 +342,28 @@ export class SyncManager {
    * Count commits between two refs
    */
   private async countCommits(from: string, to: string): Promise<number> {
-    try {
-      const result = await GitOperations.execOrThrow(
-        ['rev-list', '--count', `${from}..${to}`],
-        this.repoRoot
-      );
-      return parseInt(result, 10);
-    } catch {
+    const result = await GitOperations.execResult(
+      ['rev-list', '--count', `${from}..${to}`],
+      this.repoRoot
+    );
+    if (result.isErr()) {
       return 0;
     }
+    return parseInt(result.value, 10);
   }
 
   /**
    * Check if a branch has uncommitted changes
    */
-  private async hasUncommittedChanges(branch: string): Promise<boolean> {
-    try {
-      // Get the worktree path for this branch if it exists
-      const result = await GitOperations.exec(
-        ['worktree', 'list', '--porcelain'],
-        this.repoRoot
-      );
+  private async hasUncommittedChanges(_branch: string): Promise<boolean> {
+    // For now, just check the main repo's status
+    // TODO: handle worktrees properly
+    const status = await GitOperations.exec(
+      ['status', '--porcelain'],
+      this.repoRoot
+    );
 
-      // For now, just check the main repo's status
-      // TODO: handle worktrees properly
-      const status = await GitOperations.exec(
-        ['status', '--porcelain'],
-        this.repoRoot
-      );
-
-      return status.stdout.trim().length > 0;
-    } catch {
-      return false;
-    }
+    return status.stdout.trim().length > 0;
   }
 
   /**
@@ -413,10 +391,10 @@ export class SyncManager {
 
       if (conflictLines.length > 0) {
         const conflictFiles = conflictLines.map(line => line.slice(3));
-        
+
         // Abort the rebase so we don't leave things in a bad state
         await GitOperations.exec(['rebase', '--abort'], this.repoRoot);
-        
+
         return StackErrors.syncConflict(branch, conflictFiles);
       }
 
@@ -451,10 +429,10 @@ export class SyncManager {
 
       if (conflictLines.length > 0) {
         const conflictFiles = conflictLines.map(line => line.slice(3));
-        
+
         // Abort the merge
         await GitOperations.exec(['merge', '--abort'], this.repoRoot);
-        
+
         return StackErrors.syncConflict(branch, conflictFiles);
       }
 
@@ -464,4 +442,3 @@ export class SyncManager {
     return stackOk(undefined);
   }
 }
-

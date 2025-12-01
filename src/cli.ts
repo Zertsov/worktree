@@ -1,5 +1,6 @@
 /**
  * CLI - stacks: A modern CLI for managing stacked diffs
+ * Uses neverthrow Result types throughout the codebase
  */
 
 import * as clack from '@clack/prompts';
@@ -28,51 +29,46 @@ export async function runCLI(args: string[]): Promise<void> {
     return;
   }
 
-  try {
-    switch (command) {
-      // === Stack commands (primary) ===
-      
-      case 'list':
-      case 'ls':
-        // Default: show stacks
-        await handleListCommand(rest);
-        break;
+  switch (command) {
+    // === Stack commands (primary) ===
 
-      case 'init':
-        await handleInitCommand(rest);
-        break;
+    case 'list':
+    case 'ls':
+      // Default: show stacks
+      await handleListCommand(rest);
+      break;
 
-      case 'new':
-      case 'branch':
-        await handleNewCommand(rest);
-        break;
+    case 'init':
+      await handleInitCommand(rest);
+      break;
 
-      case 'status':
-      case 'st':
-        await handleStatusCommand(rest);
-        break;
+    case 'new':
+    case 'branch':
+      await handleNewCommand(rest);
+      break;
 
-      case 'sync':
-        await handleSyncCommand(rest);
-        break;
+    case 'status':
+    case 'st':
+      await handleStatusCommand(rest);
+      break;
 
-      case 'restack':
-        await handleRestackCommand(rest);
-        break;
+    case 'sync':
+      await handleSyncCommand(rest);
+      break;
 
-      case 'pr':
-        await handlePRCommand(rest);
-        break;
+    case 'restack':
+      await handleRestackCommand(rest);
+      break;
 
-      default:
-        clack.log.error(`Unknown command: ${command}`);
-        console.log('');
-        showHelp();
-        process.exit(1);
-    }
-  } catch (error) {
-    clack.log.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    case 'pr':
+      await handlePRCommand(rest);
+      break;
+
+    default:
+      clack.log.error(`Unknown command: ${command}`);
+      console.log('');
+      showHelp();
+      process.exit(1);
   }
 }
 

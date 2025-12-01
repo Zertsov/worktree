@@ -148,7 +148,7 @@ export const StackErrors = {
   gitError: (operation: string, message: string) =>
     stackErr('GIT_ERROR', `Git ${operation} failed: ${message}`, { operation }),
 
-  configError: (message: string) =>
+  configError: <T = never>(message: string): StackResult<T> =>
     stackErr('CONFIG_ERROR', `Configuration error: ${message}`),
 };
 

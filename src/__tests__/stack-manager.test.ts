@@ -5,8 +5,10 @@
  */
 
 import { describe, expect, test, beforeEach } from 'bun:test';
+import { ok, err } from 'neverthrow';
 import { StackManager } from '../stack/manager.js';
-import type { IGitOperations, GitExecResult } from '../git/interface.js';
+import type { IGitOperations, GitExecResult, GitResult } from '../git/interface.js';
+import { GitError } from '../git/types.js';
 
 /**
  * Create a mock git operations object with configurable behavior
@@ -91,12 +93,34 @@ function createMockGit(overrides: Partial<{
       throw new Error(`Mock execOrThrow not implemented for: ${args.join(' ')}`);
     },
 
+    async execResult(args: string[]): Promise<GitResult<string>> {
+      const cmd = args[0];
+
+      if (cmd === 'config') {
+        // Set config: config <key> <value>
+        if (args.length === 3) {
+          const [, key, value] = args;
+          configStore[key] = value;
+          return ok('');
+        }
+      }
+
+      return err(new GitError(`Mock execResult not implemented for: ${args.join(' ')}`, args.join(' '), 1));
+    },
+
     async branchExists(branch: string): Promise<boolean> {
       return branches.includes(branch);
     },
 
     async getCurrentBranch(): Promise<string | null> {
       return currentBranch;
+    },
+
+    async getCommit(ref: string): Promise<GitResult<string>> {
+      if (ref === 'HEAD') {
+        return ok(currentCommit);
+      }
+      return err(new GitError(`Unknown ref: ${ref}`, `git rev-parse ${ref}`, 1));
     },
   };
 }

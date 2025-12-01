@@ -1,5 +1,6 @@
 /**
  * Stack PR command - Create GitHub PRs for explicit stack branches with navigation
+ * Uses neverthrow Result types for error handling
  */
 
 import * as clack from '@clack/prompts';
@@ -40,7 +41,13 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
     process.exit(1);
   }
 
-  const repo = await GitOperations.getRepository();
+  const repoResult = await GitOperations.getRepository();
+  if (repoResult.isErr()) {
+    clack.cancel(repoResult.error.message);
+    process.exit(1);
+  }
+
+  const repo = repoResult.value;
   const currentBranch = await GitOperations.getCurrentBranch(repo.root);
 
   if (!currentBranch) {
@@ -91,11 +98,21 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
 
   // Authenticate
   spinner.start('Authenticating with GitHub...');
-  const auth = await github.authenticate();
-  spinner.stop(`Authenticated via ${auth.source}`);
+  const authResult = await github.authenticate();
+  if (authResult.isErr()) {
+    spinner.stop('Failed');
+    clack.cancel(authResult.error.message);
+    process.exit(1);
+  }
+  spinner.stop(`Authenticated via ${authResult.value.source}`);
 
   // Get repo info
-  const repoInfo = await github.getRepoInfo(repo.root);
+  const repoInfoResult = await github.getRepoInfo(repo.root);
+  if (repoInfoResult.isErr()) {
+    clack.cancel(repoInfoResult.error.message);
+    process.exit(1);
+  }
+  const repoInfo = repoInfoResult.value;
   clack.log.info(
     `Repository: ${repoInfo.owner}/${repoInfo.repo} (${repoInfo.host})`
   );
@@ -105,13 +122,13 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
   // Get existing PRs for all branches
   spinner.start('Checking existing PRs...');
   const prMap = new Map<string, GitHubPR>();
-  
-  try {
-    const allPRs = await github.getAllOpenPRs();
-    for (const pr of allPRs) {
+
+  const allPRsResult = await github.getAllOpenPRs();
+  if (allPRsResult.isOk()) {
+    for (const pr of allPRsResult.value) {
       prMap.set(pr.head.ref, pr);
     }
-  } catch (e) {
+  } else {
     // If we can't get all PRs, fall back to checking individual branches
     for (const branch of orderedBranches) {
       const pr = await github.getPRForBranch(branch);
@@ -133,7 +150,7 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
   for (const branch of orderedBranches) {
     const meta = branches.get(branch)!;
     const existingPR = prMap.get(branch);
-    const status = existingPR 
+    const status = existingPR
       ? pc.dim(`PR #${existingPR.number}`)
       : pc.yellow('no PR');
     console.log(`  ${colorFn('●')} ${colorFn(branch)} ${pc.dim('→')} ${meta.parent} ${pc.dim(`(${status})`)}`);
@@ -147,7 +164,7 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
 
   if (branchesNeedingPR.length === 0 && !options.updateExisting) {
     console.log(pc.green('✓') + ' All branches already have PRs');
-    
+
     if (options.link && branchesWithPR.length > 0) {
       console.log('');
       console.log(pc.dim('Use ') + pc.cyan('--update-existing') + pc.dim(' to update PR descriptions with stack navigation.'));
@@ -167,8 +184,7 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
         branches,
         stackMeta.value,
         prMap,
-        options,
-        repo.root
+        options
       );
     } else {
       results = await createPRsInteractive(
@@ -177,8 +193,7 @@ export async function stackPRCommand(options: StackPROptions = {}): Promise<void
         branches,
         stackMeta.value,
         prMap,
-        options,
-        repo.root
+        options
       );
     }
 
@@ -250,8 +265,7 @@ async function createPRsHeadless(
   branches: Map<string, { parent: string; stackName: string; baseCommit: string }>,
   stackMeta: { name: string; trunk: string; root: string },
   prMap: Map<string, GitHubPR>,
-  options: StackPROptions,
-  repoRoot: string
+  options: StackPROptions
 ): Promise<PRResult[]> {
   const spinner = clack.spinner();
   const results: PRResult[] = [];
@@ -262,7 +276,7 @@ async function createPRsHeadless(
 
   for (const branch of branchesToCreate) {
     const meta = branches.get(branch)!;
-    
+
     spinner.start(`Creating PR for ${branch}...`);
 
     // Check if branch exists on remote
@@ -293,39 +307,36 @@ async function createPRsHeadless(
       continue;
     }
 
-    try {
-      const title = generatePRTitle(branch);
-      let body = '';
+    const title = generatePRTitle(branch);
+    let body = '';
 
-      if (options.link) {
-        const navInfo = buildNavigationInfo(stackMeta, branches, branch, prMap);
-        body = updatePRDescription('', navInfo);
-      }
+    if (options.link) {
+      const navInfo = buildNavigationInfo(stackMeta, branches, branch, prMap);
+      body = updatePRDescription('', navInfo);
+    }
 
-      const pr = await github.createPR({
-        title,
-        head: branch,
-        base: meta.parent,
-        body,
-      });
+    const prResult = await github.createPR({
+      title,
+      head: branch,
+      base: meta.parent,
+      body,
+    });
 
-      spinner.stop(`✓ ${branch}`);
-      clack.log.success(`PR #${pr.number} created: ${pr.html_url}`);
-
-      results.push({
-        branch,
-        success: true,
-        pr,
-      });
-    } catch (e) {
+    if (prResult.isErr()) {
       spinner.stop(`✗ ${branch}`);
-      const error = e instanceof Error ? e.message : String(e);
-      clack.log.error(`Failed: ${error}`);
-
+      clack.log.error(`Failed: ${prResult.error.message}`);
       results.push({
         branch,
         success: false,
-        error,
+        error: prResult.error.message,
+      });
+    } else {
+      spinner.stop(`✓ ${branch}`);
+      clack.log.success(`PR #${prResult.value.number} created: ${prResult.value.html_url}`);
+      results.push({
+        branch,
+        success: true,
+        pr: prResult.value,
       });
     }
   }
@@ -342,8 +353,7 @@ async function createPRsInteractive(
   branches: Map<string, { parent: string; stackName: string; baseCommit: string }>,
   stackMeta: { name: string; trunk: string; root: string },
   prMap: Map<string, GitHubPR>,
-  options: StackPROptions,
-  repoRoot: string
+  options: StackPROptions
 ): Promise<PRResult[]> {
   const results: PRResult[] = [];
 
@@ -452,38 +462,35 @@ async function createPRsInteractive(
     const spinner = clack.spinner();
     spinner.start(`Creating PR for ${branch}...`);
 
-    try {
-      let body = description as string;
+    let body = description as string;
 
-      if (options.link) {
-        const navInfo = buildNavigationInfo(stackMeta, branches, branch, prMap);
-        body = updatePRDescription(body, navInfo);
-      }
+    if (options.link) {
+      const navInfo = buildNavigationInfo(stackMeta, branches, branch, prMap);
+      body = updatePRDescription(body, navInfo);
+    }
 
-      const pr = await github.createPR({
-        title: title as string,
-        head: branch,
-        base: meta.parent,
-        body,
-      });
+    const prResult = await github.createPR({
+      title: title as string,
+      head: branch,
+      base: meta.parent,
+      body,
+    });
 
-      spinner.stop(`✓ ${branch}`);
-      clack.log.success(`PR #${pr.number} created: ${pr.html_url}`);
-
-      results.push({
-        branch,
-        success: true,
-        pr,
-      });
-    } catch (e) {
+    if (prResult.isErr()) {
       spinner.stop(`✗ ${branch}`);
-      const error = e instanceof Error ? e.message : String(e);
-      clack.log.error(`Failed: ${error}`);
-
+      clack.log.error(`Failed: ${prResult.error.message}`);
       results.push({
         branch,
         success: false,
-        error,
+        error: prResult.error.message,
+      });
+    } else {
+      spinner.stop(`✓ ${branch}`);
+      clack.log.success(`PR #${prResult.value.number} created: ${prResult.value.html_url}`);
+      results.push({
+        branch,
+        success: true,
+        pr: prResult.value,
       });
     }
 
@@ -509,13 +516,13 @@ async function updatePRsWithNavigation(
     const pr = prMap.get(branch);
     if (!pr) continue;
 
-    try {
-      const navInfo = buildNavigationInfo(stackMeta, branchMeta, branch, prMap);
-      const newBody = updatePRDescription(pr.body || '', navInfo);
+    const navInfo = buildNavigationInfo(stackMeta, branchMeta, branch, prMap);
+    const newBody = updatePRDescription(pr.body || '', navInfo);
 
-      // Only update if body changed
-      if (newBody !== (pr.body || '')) {
-        await github.updatePR(pr.number, { body: newBody });
+    // Only update if body changed
+    if (newBody !== (pr.body || '')) {
+      const updateResult = await github.updatePR(pr.number, { body: newBody });
+      if (updateResult.isOk()) {
         results.push({
           branch,
           success: true,
@@ -525,16 +532,16 @@ async function updatePRsWithNavigation(
       } else {
         results.push({
           branch,
-          success: true,
-          pr,
-          updated: false,
+          success: false,
+          error: updateResult.error.message,
         });
       }
-    } catch (e) {
+    } else {
       results.push({
         branch,
-        success: false,
-        error: e instanceof Error ? e.message : String(e),
+        success: true,
+        pr,
+        updated: false,
       });
     }
   }
@@ -589,4 +596,3 @@ function displaySummary(results: PRResult[], colorFn: (text: string) => string):
 
   console.log('');
 }
-

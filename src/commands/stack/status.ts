@@ -1,12 +1,13 @@
 /**
  * Stack status command - Show sync status for stack branches
+ * Uses neverthrow Result types for error handling
  */
 
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { GitOperations } from '../../git/operations.js';
 import { StackManager } from '../../stack/manager.js';
-import { SyncManager, type BranchSyncStatus } from '../../stack/sync.js';
+import { SyncManager, type BranchSyncStatus, type StackSyncStatus } from '../../stack/sync.js';
 import { ColorManager } from '../../stack/colors.js';
 
 export interface StackStatusOptions {
@@ -23,7 +24,13 @@ export async function stackStatusCommand(options: StackStatusOptions = {}): Prom
     process.exit(1);
   }
 
-  const repo = await GitOperations.getRepository();
+  const repoResult = await GitOperations.getRepository();
+  if (repoResult.isErr()) {
+    clack.cancel(repoResult.error.message);
+    process.exit(1);
+  }
+
+  const repo = repoResult.value;
   const currentBranch = await GitOperations.getCurrentBranch(repo.root);
   const manager = new StackManager(repo.root);
   const syncManager = new SyncManager(repo.root);
@@ -84,18 +91,21 @@ async function displayStackStatus(
   stackName: string,
   currentBranch: string | null,
   options: StackStatusOptions,
-  preloadedStatus?: Awaited<ReturnType<typeof syncManager.getStackSyncStatus>> extends { value: infer T } ? T : never
+  preloadedStatus?: StackSyncStatus
 ): Promise<void> {
-  const statusResult = preloadedStatus 
-    ? { isOk: () => true, value: preloadedStatus } as const
-    : await syncManager.getStackSyncStatus(stackName);
+  let status: StackSyncStatus;
 
-  if (!statusResult.isOk()) {
-    console.log(pc.red(`  Error loading stack ${stackName}`));
-    return;
+  if (preloadedStatus) {
+    status = preloadedStatus;
+  } else {
+    const statusResult = await syncManager.getStackSyncStatus(stackName);
+    if (statusResult.isErr()) {
+      console.log(pc.red(`  Error loading stack ${stackName}`));
+      return;
+    }
+    status = statusResult.value;
   }
 
-  const status = statusResult.value;
   const colorManager = new ColorManager();
   const colorFn = colorManager.getColorForStack(stackName);
 
@@ -135,8 +145,8 @@ async function displayStackStatus(
 
   // Summary
   if (status.needsSync) {
-    const behindCount = status.branches.filter(b => b.status === 'behind').length;
-    const divergedCount = status.branches.filter(b => b.status === 'diverged').length;
+    const behindCount = status.branches.filter((b: BranchSyncStatus) => b.status === 'behind').length;
+    const divergedCount = status.branches.filter((b: BranchSyncStatus) => b.status === 'diverged').length;
 
     console.log(pc.yellow('⚠') + ' ' + pc.bold('Sync needed'));
     if (behindCount > 0) {
@@ -217,4 +227,3 @@ function printStatusTree(
     printStatusTree(child, childrenMap, branchMap, childPrefix, currentBranch, colorFn, options);
   }
 }
-

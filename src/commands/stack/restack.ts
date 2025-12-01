@@ -1,5 +1,6 @@
 /**
  * Stack restack command - Re-record base commits after manual operations
+ * Uses neverthrow Result types for error handling
  */
 
 import * as clack from '@clack/prompts';
@@ -23,7 +24,13 @@ export async function stackRestackCommand(options: StackRestackOptions = {}): Pr
     process.exit(1);
   }
 
-  const repo = await GitOperations.getRepository();
+  const repoResult = await GitOperations.getRepository();
+  if (repoResult.isErr()) {
+    clack.cancel(repoResult.error.message);
+    process.exit(1);
+  }
+
+  const repo = repoResult.value;
   const currentBranch = await GitOperations.getCurrentBranch(repo.root);
   const manager = new StackManager(repo.root);
   const syncManager = new SyncManager(repo.root);
@@ -109,4 +116,3 @@ export async function stackRestackCommand(options: StackRestackOptions = {}): Pr
   console.log(pc.dim('Run ') + pc.cyan('stacks status') + pc.dim(' to verify sync status.'));
   console.log('');
 }
-

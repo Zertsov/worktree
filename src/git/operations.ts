@@ -1,9 +1,12 @@
 /**
- * Low-level git command wrappers
+ * Low-level git command wrappers using neverthrow Result types
  */
 
 import { spawn } from 'bun';
+import { Result, ok, err } from 'neverthrow';
 import { GitError, type Repository } from './types.js';
+
+export type GitResult<T> = Result<T, GitError>;
 
 export class GitOperations {
   /**
@@ -28,49 +31,57 @@ export class GitOperations {
   }
 
   /**
-   * Execute a git command and throw on error
+   * Execute a git command and return Result
    */
-  static async execOrThrow(args: string[], cwd?: string): Promise<string> {
+  static async execResult(args: string[], cwd?: string): Promise<GitResult<string>> {
     const result = await this.exec(args, cwd);
     if (result.exitCode !== 0) {
-      throw new GitError(
-        result.stderr || 'Git command failed',
-        `git ${args.join(' ')}`,
-        result.exitCode
+      return err(
+        new GitError(
+          result.stderr || 'Git command failed',
+          `git ${args.join(' ')}`,
+          result.exitCode
+        )
       );
     }
-    return result.stdout.trim();
+    return ok(result.stdout.trim());
+  }
+
+  /**
+   * Execute a git command and throw on error (legacy - prefer execResult)
+   */
+  static async execOrThrow(args: string[], cwd?: string): Promise<string> {
+    const result = await this.execResult(args, cwd);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    return result.value;
   }
 
   /**
    * Check if we're in a git repository
    */
   static async isGitRepository(cwd?: string): Promise<boolean> {
-    try {
-      await this.execOrThrow(['rev-parse', '--git-dir'], cwd);
-      return true;
-    } catch {
-      return false;
-    }
+    const result = await this.execResult(['rev-parse', '--git-dir'], cwd);
+    return result.isOk();
   }
 
   /**
    * Get repository root and name
    */
-  static async getRepository(cwd?: string): Promise<Repository> {
-    const root = await this.execOrThrow(
-      ['rev-parse', '--show-toplevel'],
-      cwd
-    );
-    const name = root.split('/').pop() || 'unknown';
-    return { root, name };
+  static async getRepository(cwd?: string): Promise<GitResult<Repository>> {
+    const result = await this.execResult(['rev-parse', '--show-toplevel'], cwd);
+    return result.map((root) => ({
+      root,
+      name: root.split('/').pop() || 'unknown',
+    }));
   }
 
   /**
    * List all worktrees in porcelain format
    */
-  static async listWorktrees(cwd?: string): Promise<string> {
-    return await this.execOrThrow(['worktree', 'list', '--porcelain'], cwd);
+  static async listWorktrees(cwd?: string): Promise<GitResult<string>> {
+    return this.execResult(['worktree', 'list', '--porcelain'], cwd);
   }
 
   /**
@@ -85,7 +96,7 @@ export class GitOperations {
       track?: boolean;
     } = {},
     cwd?: string
-  ): Promise<void> {
+  ): Promise<GitResult<void>> {
     const args = ['worktree', 'add'];
 
     if (options.createBranch && options.baseBranch) {
@@ -96,44 +107,42 @@ export class GitOperations {
       args.push(path, branch);
     }
 
-    await this.execOrThrow(args, cwd);
+    const result = await this.execResult(args, cwd);
+    return result.map(() => undefined);
   }
 
   /**
    * Remove a worktree
    */
-  static async removeWorktree(path: string, force = false, cwd?: string): Promise<void> {
+  static async removeWorktree(path: string, force = false, cwd?: string): Promise<GitResult<void>> {
     const args = ['worktree', 'remove', path];
     if (force) {
       args.push('--force');
     }
-    await this.execOrThrow(args, cwd);
+    const result = await this.execResult(args, cwd);
+    return result.map(() => undefined);
   }
 
   /**
    * Prune worktree information
    */
-  static async pruneWorktrees(dryRun = false, cwd?: string): Promise<string> {
+  static async pruneWorktrees(dryRun = false, cwd?: string): Promise<GitResult<string>> {
     const args = ['worktree', 'prune', '-v'];
     if (dryRun) {
       args.push('--dry-run');
     }
-    return await this.execOrThrow(args, cwd);
+    return this.execResult(args, cwd);
   }
 
   /**
    * Check if a branch exists locally
    */
   static async branchExists(branch: string, cwd?: string): Promise<boolean> {
-    try {
-      await this.execOrThrow(
-        ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`],
-        cwd
-      );
-      return true;
-    } catch {
-      return false;
-    }
+    const result = await this.execResult(
+      ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`],
+      cwd
+    );
+    return result.isOk();
   }
 
   /**
@@ -144,22 +153,18 @@ export class GitOperations {
     remote = 'origin',
     cwd?: string
   ): Promise<boolean> {
-    try {
-      await this.execOrThrow(
-        ['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${branch}`],
-        cwd
-      );
-      return true;
-    } catch {
-      return false;
-    }
+    const result = await this.execResult(
+      ['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${branch}`],
+      cwd
+    );
+    return result.isOk();
   }
 
   /**
    * Get all branches with their tracking information
    */
-  static async listBranches(cwd?: string): Promise<string> {
-    return await this.execOrThrow(
+  static async listBranches(cwd?: string): Promise<GitResult<string>> {
+    return this.execResult(
       [
         'for-each-ref',
         '--format=%(refname:short)|%(upstream:short)|%(upstream:track)',
@@ -173,15 +178,11 @@ export class GitOperations {
    * Get the parent branch from git config
    */
   static async getBranchParent(branch: string, cwd?: string): Promise<string | null> {
-    try {
-      const parent = await this.execOrThrow(
-        ['config', '--get', `branch.${branch}.parent`],
-        cwd
-      );
-      return parent || null;
-    } catch {
-      return null;
-    }
+    const result = await this.execResult(
+      ['config', '--get', `branch.${branch}.parent`],
+      cwd
+    );
+    return result.isOk() && result.value ? result.value : null;
   }
 
   /**
@@ -191,11 +192,12 @@ export class GitOperations {
     branch: string,
     parent: string,
     cwd?: string
-  ): Promise<void> {
-    await this.execOrThrow(
+  ): Promise<GitResult<void>> {
+    const result = await this.execResult(
       ['config', `branch.${branch}.parent`, parent],
       cwd
     );
+    return result.map(() => undefined);
   }
 
   /**
@@ -206,32 +208,26 @@ export class GitOperations {
     branch2: string,
     cwd?: string
   ): Promise<string | null> {
-    try {
-      return await this.execOrThrow(['merge-base', branch1, branch2], cwd);
-    } catch {
-      return null;
-    }
+    const result = await this.execResult(['merge-base', branch1, branch2], cwd);
+    return result.isOk() ? result.value : null;
   }
 
   /**
    * Get current branch name
    */
   static async getCurrentBranch(cwd?: string): Promise<string | null> {
-    try {
-      return await this.execOrThrow(
-        ['rev-parse', '--abbrev-ref', 'HEAD'],
-        cwd
-      );
-    } catch {
-      return null;
-    }
+    const result = await this.execResult(
+      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      cwd
+    );
+    return result.isOk() ? result.value : null;
   }
 
   /**
    * Get status of a worktree
    */
-  static async getStatus(cwd: string): Promise<string> {
-    return await this.execOrThrow(['status', '--porcelain=v1'], cwd);
+  static async getStatus(cwd: string): Promise<GitResult<string>> {
+    return this.execResult(['status', '--porcelain=v1'], cwd);
   }
 
   /**
@@ -241,9 +237,59 @@ export class GitOperations {
     branch: string,
     force = false,
     cwd?: string
-  ): Promise<void> {
+  ): Promise<GitResult<void>> {
     const flag = force ? '-D' : '-d';
-    await this.execOrThrow(['branch', flag, branch], cwd);
+    const result = await this.execResult(['branch', flag, branch], cwd);
+    return result.map(() => undefined);
+  }
+
+  /**
+   * Checkout a branch
+   */
+  static async checkout(branch: string, cwd?: string): Promise<GitResult<void>> {
+    const result = await this.execResult(['checkout', branch], cwd);
+    return result.map(() => undefined);
+  }
+
+  /**
+   * Create a new branch and checkout
+   */
+  static async checkoutNewBranch(branch: string, cwd?: string): Promise<GitResult<void>> {
+    const result = await this.execResult(['checkout', '-b', branch], cwd);
+    return result.map(() => undefined);
+  }
+
+  /**
+   * Fetch from remote
+   */
+  static async fetch(remote = '--all', cwd?: string): Promise<GitResult<void>> {
+    const result = await this.execResult(['fetch', remote], cwd);
+    return result.map(() => undefined);
+  }
+
+  /**
+   * Push to remote with force-with-lease
+   */
+  static async pushForce(branch: string, remote = 'origin', cwd?: string): Promise<GitResult<void>> {
+    const result = await this.execResult(
+      ['push', '--force-with-lease', remote, branch],
+      cwd
+    );
+    return result.map(() => undefined);
+  }
+
+  /**
+   * Get short commit hash
+   */
+  static async getShortCommit(cwd?: string): Promise<string> {
+    const result = await this.execResult(['rev-parse', '--short', 'HEAD'], cwd);
+    return result.isOk() ? result.value : 'unknown';
+  }
+
+  /**
+   * Get full commit hash
+   */
+  static async getCommit(ref = 'HEAD', cwd?: string): Promise<GitResult<string>> {
+    return this.execResult(['rev-parse', ref], cwd);
   }
 }
-
